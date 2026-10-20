@@ -1,0 +1,1457 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}[hidden]{display:none!important}img{max-width:100%}</style>
+</head>
+<body>
+<title>타건 무대</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Hahmlet:wght@500;800&family=Bagel+Fat+One&family=Do+Hyeon&family=Black+Han+Sans&family=Nanum+Myeongjo:wght@400;800&family=Jua&family=IBM+Plex+Sans+KR:wght@400;500;700&family=Orbit&family=Gowun+Dodum&family=Nanum+Gothic+Coding:wght@400;700&family=Song+Myung&family=Dongle:wght@400;700&family=Gugi&display=swap">
+<style>
+/* Layout: one-screen stage. Song meta on top, typing panel in the middle, control dock at the bottom.
+   Every color and face below is a token that the selected song's concept theme rewrites at runtime. */
+:root{
+  --bg:#050607; --panel:rgba(200,210,220,.05); --fg:#e9edf1; --dim:#6b737c;
+  --accent:#cfd6dd; --accent2:#8f9bff; --ok:#e9edf1; --err:#ff4d5e; --line:rgba(207,214,221,.16);
+  --bgimg:radial-gradient(120% 70% at 50% -10%,#2b3037 0%,#0b0d10 55%,#050607 100%);
+  --fd:'Orbit',system-ui,sans-serif; --ft:'Orbit',system-ui,sans-serif; --fds:1;
+  --fu:'IBM Plex Sans KR',system-ui,-apple-system,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+  --fm:'Nanum Gothic Coding',ui-monospace,'SFMono-Regular',Menlo,monospace;
+  --pulse:0; --noise:none;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background-color:var(--bg);background-image:var(--bgimg);background-attachment:fixed;color:var(--fg);font-family:var(--fu);font-size:14px;overflow:hidden;transition:background-color .6s,color .4s;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit}
+canvas#bg{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+#deco{position:fixed;inset:0;z-index:1;pointer-events:none;overflow:hidden}
+canvas#fx{position:fixed;inset:0;width:100%;height:100%;z-index:6;pointer-events:none}
+
+.app{position:relative;z-index:2;height:100%;overflow-y:auto;display:flex;flex-direction:column;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));transition:opacity .25s}
+.app.switching{opacity:.15}
+.wrap{max-width:1080px;width:100%;margin-inline:auto}
+
+/* top bar */
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:14px 4px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;letter-spacing:.02em;white-space:nowrap}
+.keycap{width:24px;height:24px;border-radius:6px;border:1.5px solid currentColor;box-shadow:inset 0 -4px 0 color-mix(in srgb,currentColor 25%,transparent);display:grid;place-items:center;font-size:11px;font-family:var(--fm)}
+.top-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.btn{font-size:13px;font-weight:500;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);transition:transform .12s,border-color .2s,background .2s;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn:active{transform:translateY(1px)}
+.btn:focus-visible,.seg button:focus-visible,.song:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn.primary{background:var(--fg);color:var(--bg);border-color:var(--fg);font-weight:600}
+.btn.ghost{background:transparent}
+.btn.danger{color:var(--err)}
+.btn svg{width:15px;height:15px;flex:none}
+kbd{font-family:var(--fm);font-size:10.5px;padding:1px 5px;border-radius:4px;border:1px solid var(--line);color:var(--dim)}
+
+/* stage */
+main.stage{flex:1;display:flex;flex-direction:column;justify-content:center;gap:clamp(14px,2.6vh,26px);padding-block:10px;min-height:0}
+.meta{display:flex;flex-direction:column;gap:6px}
+.meta-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.pill{font-size:11px;font-weight:600;letter-spacing:.06em;padding:4px 9px;border-radius:999px;border:1px solid var(--line);color:var(--dim);background:var(--panel)}
+.pill.live{color:var(--accent);border-color:var(--accent)}
+#mTitle{font-family:var(--fd);font-size:calc(clamp(34px,6.2vw,74px) * var(--fds));line-height:1.04;margin:4px 0 0;text-wrap:balance;letter-spacing:-.01em;font-weight:800;overflow-wrap:anywhere}
+#mArtist{margin:0;font-size:15px;color:var(--dim);font-weight:500}
+.record{margin:0;font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}
+
+body[data-title=chrome] #mTitle{background:linear-gradient(180deg,#ffffff 0%,#d3d9df 36%,#5b636d 52%,#eef1f4 68%,#98a1aa 100%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 calc(14px + var(--pulse)*22px) rgba(160,180,255,.22))}
+body[data-title=gold] #mTitle{background:linear-gradient(180deg,#fff4d2 0%,#e6c37a 42%,#9a7230 58%,#f6dfa3 80%,#c79a4a 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+body[data-title=glow] #mTitle{color:var(--accent);text-shadow:0 0 calc(10px + var(--pulse)*24px) var(--accent),0 0 42px color-mix(in srgb,var(--accent) 45%,transparent)}
+body[data-title=sticker] #mTitle{color:var(--fg);text-shadow:3px 3px 0 var(--accent),6px 6px 0 var(--accent2)}
+body[data-title=retro] #mTitle{background:linear-gradient(180deg,var(--accent2) 10%,var(--accent) 90%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(4px 4px 0 rgba(10,2,16,.9))}
+body[data-title=gradient] #mTitle{background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+
+/* typing panel */
+.typing{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:clamp(18px,3vw,32px);display:flex;flex-direction:column;gap:10px;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);box-shadow:0 0 calc(var(--pulse)*46px) color-mix(in srgb,var(--accent) calc(var(--pulse)*55%),transparent);cursor:text;transition:border-color .2s}
+.typing.focused{border-color:color-mix(in srgb,var(--accent) 55%,transparent)}
+.typing.shake{animation:shake .22s}
+.line{font-family:var(--ft);white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere}
+.line.prev{font-size:14px;color:var(--dim);opacity:.55;min-height:1.4em}
+.line.cur{font-size:clamp(22px,3.5vw,38px);line-height:1.38;color:var(--dim);min-height:1.38em;opacity:.9}
+.cur .ok{color:var(--ok)}
+.cur .err{color:var(--err);text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:7px}
+.cur .err.sp{background:color-mix(in srgb,var(--err) 35%,transparent)}
+.cur .comp{color:var(--accent)}
+.cur .at{position:relative}
+.cur .at::before{content:'';position:absolute;left:-1px;top:14%;bottom:14%;width:2px;background:var(--accent);animation:blink 1s steps(1) infinite}
+.cur.done{color:var(--ok)}
+.cur .wait{font-size:.62em;letter-spacing:.04em}
+.line.next{font-size:clamp(15px,1.9vw,19px);color:var(--dim);opacity:.78;min-height:1.4em}
+.line.next2{font-size:clamp(14px,1.7vw,16px);color:var(--dim);opacity:.4;min-height:1.4em}
+#inp{font-family:var(--ft);font-size:clamp(19px,3vw,30px);color:var(--fg);background:transparent;border:0;border-top:1px dashed var(--line);padding:12px 0 2px;outline:none;width:100%;caret-color:var(--accent);border-radius:0}
+#inp:focus-visible{outline:none}
+.focus-hint{position:absolute;inset:0;display:grid;place-items:center;border-radius:inherit;background:color-mix(in srgb,var(--bg) 55%,transparent);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);font-weight:600;font-size:15px;color:var(--fg);letter-spacing:.02em;transition:opacity .2s;text-align:center;padding:16px}
+.typing.focused .focus-hint{opacity:0;pointer-events:none}
+.kbar{height:3px;background:var(--line);border-radius:3px;overflow:hidden}
+.kbar i{display:block;height:100%;width:0;background:var(--accent)}
+.kctl{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--dim)}
+.kctl .btn{padding:6px 10px;font-size:12px}
+.kctl .off{font-family:var(--fm);font-variant-numeric:tabular-nums}
+.cam{display:none}
+body[data-deco~=cam] .cam{display:flex}
+.rec{margin-left:auto;align-items:center;gap:6px;font-family:var(--fm);font-size:12px;font-weight:700;color:var(--fg);letter-spacing:.08em}
+.rec i{width:9px;height:9px;border-radius:50%;background:#e23b3b;animation:pulse 1.2s infinite}
+.date{position:absolute;right:18px;bottom:10px;font-family:var(--fm);font-size:12px;font-weight:700;color:#f29b38;letter-spacing:.08em;text-shadow:0 0 6px rgba(242,155,56,.5)}
+
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.stat{display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat b{font-family:var(--fm);font-size:clamp(20px,2.6vw,28px);font-weight:700;font-variant-numeric:tabular-nums;color:var(--fg);line-height:1.1}
+.stat span{font-size:11px;letter-spacing:.08em;color:var(--dim)}
+.progress{height:2px;background:var(--line);border-radius:2px;overflow:hidden}
+.progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .3s}
+
+/* dock */
+footer.dock{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;padding-block:8px 16px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;padding:3px;background:var(--panel);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.seg button{font-size:13px;border:0;background:transparent;color:var(--dim);padding:5px 11px;border-radius:7px;cursor:pointer;white-space:nowrap}
+.seg button.on{background:var(--fg);color:var(--bg);font-weight:600}
+.sp .dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:none}
+.sp.on .dot{background:#1ed760}
+.sp.playing .dot{animation:pulse 1.2s infinite}
+#spLabel{max-width:210px;overflow:hidden;text-overflow:ellipsis}
+.hints{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;font-size:11px;color:var(--dim);padding-bottom:10px}
+
+/* beat popover */
+.beat-pop{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:20;background:var(--bg);background-image:var(--bgimg);border:1px solid var(--line);border-radius:16px;padding:16px;width:min(320px,calc(100% - 32px));display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.tap{height:84px;border-radius:14px;border:1px solid var(--accent);background:color-mix(in srgb,var(--accent) calc(10% + var(--pulse)*30%),transparent);color:var(--fg);font-size:15px;font-weight:600;cursor:pointer;touch-action:manipulation}
+.bpm{font-family:var(--fm);font-size:28px;font-weight:700;font-variant-numeric:tabular-nums}
+
+/* drawer */
+.scrim{position:fixed;inset:0;z-index:25;background:rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:opacity .25s}
+.scrim.on{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(440px,100%);z-index:30;background-color:var(--bg);background-image:var(--bgimg);border-left:1px solid var(--line);display:flex;flex-direction:column;gap:10px;transform:translateX(100%);transition:transform .32s cubic-bezier(.2,.8,.2,1),visibility .32s;padding-top:calc(env(safe-area-inset-top,0px) + 16px);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:16px;padding-right:max(16px,env(safe-area-inset-right,0px));visibility:hidden}
+.drawer.open{transform:none;visibility:visible}
+.drawer h2{margin:0;font-size:18px;font-weight:700}
+.drawer-head{display:flex;justify-content:space-between;align-items:center}
+.search{width:100%;font:inherit;font-size:15px;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 13px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:12px;padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--dim);cursor:pointer}
+.chip.on{background:var(--fg);color:var(--bg);border-color:var(--fg);font-weight:600}
+.songs{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:2px;padding-bottom:16px;margin-inline:-6px}
+.gh{font-size:11px;letter-spacing:.14em;color:var(--dim);padding:14px 10px 4px;font-weight:700}
+.song{display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:12px;align-items:center;padding:9px 10px;border-radius:12px;cursor:pointer;border:1px solid transparent;background:transparent;text-align:left;width:100%}
+.song:hover{background:var(--panel);border-color:var(--line)}
+.song.cur{border-color:var(--accent)}
+.sw{width:38px;height:38px;border-radius:10px;border:1px solid var(--line)}
+.song .t{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.song .a{font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.song .tags{display:flex;gap:4px;align-items:center;font-size:11px;color:var(--dim)}
+.tag{padding:2px 6px;border-radius:5px;border:1px solid var(--line);white-space:nowrap}
+.empty{padding:30px 10px;color:var(--dim);text-align:center}
+
+/* modals */
+.modal{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45)}
+.sheet{width:min(580px,100%);max-height:calc(100% - 16px);overflow-y:auto;background-color:var(--bg);background-image:var(--bgimg);color:var(--fg);border:1px solid var(--line);border-radius:18px;padding:22px;display:flex;flex-direction:column;gap:14px;box-shadow:0 30px 80px rgba(0,0,0,.35)}
+.sheet h2{font-family:var(--fd);font-size:calc(24px * var(--fds));margin:0;line-height:1.2;text-wrap:balance}
+.sheet h3{margin:6px 0 0;font-size:13px;letter-spacing:.06em;color:var(--dim);font-weight:700}
+.sheet textarea,.sheet input[type=text]{width:100%;font:inherit;font-size:14px;line-height:1.6;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.sheet textarea{min-height:190px;resize:vertical}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row.end{justify-content:flex-end}
+.help{font-size:13px;color:var(--dim);line-height:1.65;margin:0}
+.opt{display:flex;gap:6px;flex-wrap:wrap}
+.opt label{font-size:13px;display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--line);border-radius:10px;cursor:pointer;background:var(--panel)}
+.opt input{accent-color:var(--accent)}
+.preview{font-size:13px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;line-height:1.7;white-space:pre-wrap;max-height:150px;overflow-y:auto}
+.mono{font-family:var(--fm);font-size:12px;word-break:break-all}
+.uri{display:flex;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.uri code{flex:1;min-width:0;font-family:var(--fm);font-size:12px;word-break:break-all}
+details{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--panel)}
+summary{cursor:pointer;font-size:13px;font-weight:600}
+ol{margin:8px 0 0;padding-left:20px;font-size:13px;line-height:1.75;color:var(--fg)}
+.res-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.res{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.res b{font-family:var(--fm);font-size:30px;font-variant-numeric:tabular-nums}
+.res span{font-size:12px;color:var(--dim)}
+.newrec{color:var(--accent);font-size:11px;font-weight:700;letter-spacing:.1em}
+.status{font-size:13px;color:var(--dim)}
+
+.toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom,0px));transform:translate(-50%,16px);opacity:0;pointer-events:none;z-index:50;background:var(--fg);color:var(--bg);padding:10px 14px;border-radius:12px;font-size:13px;display:flex;gap:10px;align-items:center;transition:.25s;max-width:calc(100% - 32px)}
+.toast.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.toast button{border:0;background:var(--bg);color:var(--fg);border-radius:8px;padding:4px 10px;font-weight:600;cursor:pointer}
+.combo-pop{position:fixed;z-index:7;pointer-events:none;font-family:var(--fd);font-weight:800;font-size:calc(46px * var(--fds));color:var(--accent);left:50%;top:38%;transform:translate(-50%,-50%);animation:pop .9s forwards;text-shadow:0 0 24px color-mix(in srgb,var(--accent) 50%,transparent);white-space:nowrap}
+
+/* decorative overlays per concept */
+body[data-deco~=grain] #deco::before{content:'';position:absolute;inset:-60px;background-image:var(--noise);opacity:.2;animation:grain .5s steps(3) infinite;mix-blend-mode:multiply}
+body[data-deco~=chrome] #deco::after{content:'';position:absolute;inset:0;background:linear-gradient(105deg,transparent 38%,rgba(255,255,255,.05) 45%,rgba(200,215,255,.11) 50%,rgba(255,255,255,.04) 55%,transparent 62%);background-size:260% 100%;animation:sheen 8s linear infinite}
+body[data-deco~=scan] #deco::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,.16) 0 1px,transparent 1px 3px)}
+body[data-deco~=vignette] #deco::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 48%,rgba(0,0,0,.55) 100%)}
+
+@keyframes blink{50%{opacity:0}}
+@keyframes shake{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+@keyframes pulse{50%{opacity:.35}}
+@keyframes grain{0%{transform:translate(0,0)}33%{transform:translate(-22px,14px)}66%{transform:translate(16px,-20px)}}
+@keyframes sheen{from{background-position:120% 0}to{background-position:-120% 0}}
+@keyframes pop{0%{opacity:0;transform:translate(-50%,-50%) scale(.6)}25%{opacity:1;transform:translate(-50%,-50%) scale(1.12)}60%{opacity:1;transform:translate(-50%,-56%) scale(1)}100%{opacity:0;transform:translate(-50%,-80%) scale(1)}}
+
+@media (max-width:640px){
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .hints{display:none}
+  .top-actions kbd{display:none}
+  #spLabel{max-width:130px}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001s!important;animation-iteration-count:1!important;transition-duration:.001s!important}
+}
+</style>
+
+<canvas id="bg"></canvas>
+<div id="deco"></div>
+<canvas id="fx"></canvas>
+
+<div class="app" id="app">
+  <header class="top wrap">
+    <div class="brand"><span class="keycap">K</span>타건 무대</div>
+    <div class="top-actions">
+      <button class="btn" id="btnSearch" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        곡 고르기 <kbd>Ctrl K</kbd>
+      </button>
+      <button class="btn" id="btnRandom" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="m15 15 6 6"/><path d="M4 4l5 5"/></svg>
+        랜덤
+      </button>
+      <button class="btn" id="btnSettings" type="button" aria-label="설정">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+        설정
+      </button>
+    </div>
+  </header>
+
+  <main class="stage wrap" id="stage">
+    <section class="meta">
+      <div class="meta-row">
+        <span class="pill" id="mGen"></span>
+        <span class="pill" id="mConcept"></span>
+        <span class="pill live" id="mLive" hidden>스포티파이 재생 중</span>
+        <span class="cam rec"><i></i>REC <span id="recTime">00:00:00</span></span>
+      </div>
+      <h1 id="mTitle"></h1>
+      <p id="mArtist"></p>
+      <p class="record" id="mRecord"></p>
+    </section>
+
+    <section class="typing" id="typing">
+      <div class="kctl" id="kCtl" hidden>
+        <button class="btn" id="kPlay" type="button">노래 시작과 함께 누르기</button>
+        <button class="btn" id="kMinus" type="button">−0.5초</button>
+        <button class="btn" id="kPlus" type="button">+0.5초</button>
+        <span class="off" id="kOff">싱크 0.0초</span>
+        <span id="kSrc"></span>
+      </div>
+      <div class="line prev" id="lPrev"></div>
+      <div class="line cur" id="lCur"></div>
+      <div class="kbar" id="kBar" hidden><i id="kBarFill"></i></div>
+      <div class="line next" id="lNext1"></div>
+      <div class="line next2" id="lNext2"></div>
+      <input id="inp" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="next" aria-label="타자 입력">
+      <span class="cam date" id="dateStamp"></span>
+      <div class="focus-hint" id="focusHint">여기를 누르고 타자를 시작하세요</div>
+    </section>
+
+    <section class="stats">
+      <div class="stat"><b id="sCpm">0</b><span>타수 / 분</span></div>
+      <div class="stat"><b id="sAcc">100</b><span>정확도 %</span></div>
+      <div class="stat"><b id="sProg">0 / 0</b><span>줄</span></div>
+      <div class="stat"><b id="sCombo">0</b><span>콤보</span></div>
+    </section>
+    <div class="progress"><i id="pBar"></i></div>
+  </main>
+
+  <footer class="dock wrap">
+    <div class="seg" id="segSource" role="group" aria-label="연습 문장">
+      <button type="button" data-v="concept">컨셉 문장</button>
+      <button type="button" data-v="lyrics">내 가사</button>
+    </div>
+    <div class="seg" id="segMode" role="group" aria-label="모드">
+      <button type="button" data-v="practice">연습</button>
+      <button type="button" data-v="karaoke">노래방</button>
+    </div>
+    <button class="btn" id="btnLyrics" type="button">가사 넣기</button>
+    <button class="btn" id="btnBeat" type="button">박자 <span id="beatVal" class="mono"></span></button>
+    <button class="btn sp" id="btnSpotify" type="button"><span class="dot"></span><span id="spLabel">스포티파이</span></button>
+    <button class="btn ghost" id="btnEnd" type="button">끝내기</button>
+  </footer>
+  <div class="hints wrap"><span><kbd>Enter</kbd> 다음 줄</span><span><kbd>Esc</kbd> 처음부터</span><span><kbd>Ctrl K</kbd> 곡 검색</span></div>
+</div>
+
+<div class="beat-pop" id="beatPop" hidden>
+  <div class="row" style="justify-content:space-between"><strong>박자 맞추기</strong><span class="bpm" id="bpmVal">—</span></div>
+  <p class="help">음악을 틀고 박자에 맞춰 아래 버튼을 4번 이상 눌러주세요. 화면 이펙트가 그 박자로 뛰어요.</p>
+  <button class="tap" id="tapBtn" type="button">여기를 박자에 맞춰 탭</button>
+  <div class="row">
+    <button class="btn" id="bpmMinus" type="button">−1</button>
+    <button class="btn" id="bpmPlus" type="button">+1</button>
+    <button class="btn" id="bpmOff" type="button">끄기</button>
+    <button class="btn primary" id="bpmClose" type="button" style="margin-left:auto">닫기</button>
+  </div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-label="곡 고르기">
+  <div class="drawer-head"><h2>곡 고르기</h2><button class="btn ghost" id="drawerClose" type="button">닫기</button></div>
+  <input class="search" id="q" type="text" placeholder="곡, 그룹, 컨셉으로 검색" autocomplete="off">
+  <div class="chips" id="genChips"></div>
+  <div class="chips"><button class="chip" id="onlyLyrics" type="button">가사 넣은 곡만</button></div>
+  <div class="songs" id="songList"></div>
+</aside>
+
+<div class="modal" id="mLyrics" hidden>
+  <div class="sheet" role="dialog" aria-labelledby="lyTitle">
+    <h2 id="lyTitle">가사 넣기</h2>
+    <p class="help">가사 사이트에서 복사해서 붙여넣으세요. 이 브라우저에만 저장돼요. <b>[00:12.34]</b>처럼 시간이 적힌 가사(LRC)를 넣으면 노래방 모드도 쓸 수 있어요.</p>
+    <textarea id="lyRaw" placeholder="여기에 가사를 붙여넣기"></textarea>
+    <h3>영어 가사</h3>
+    <div class="opt" id="lyEng">
+      <label><input type="radio" name="eng" value="keep"> 그대로 치기</label>
+      <label><input type="radio" name="eng" value="words"> 영어 단어만 빼기</label>
+      <label><input type="radio" name="eng" value="lines"> 영어 위주 줄 건너뛰기</label>
+    </div>
+    <div class="opt"><label><input type="checkbox" id="lyParen"> 괄호 속 애드립 지우기</label></div>
+    <div class="status" id="lyStat"></div>
+    <div class="preview" id="lyPrev" hidden></div>
+    <div class="row end">
+      <button class="btn danger" id="lyDelete" type="button" style="margin-right:auto">저장된 가사 지우기</button>
+      <button class="btn" id="lyCancel" type="button">취소</button>
+      <button class="btn primary" id="lySave" type="button">저장하고 연습</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="mSettings" hidden>
+  <div class="sheet" role="dialog" aria-labelledby="stTitle">
+    <h2 id="stTitle">설정</h2>
+    <h3>타건 이펙트</h3>
+    <div class="seg" id="segFx">
+      <button type="button" data-v="0">끔</button><button type="button" data-v="1">약하게</button><button type="button" data-v="2">보통</button><button type="button" data-v="3">강하게</button>
+    </div>
+
+    <h3 id="spSection">스포티파이 연동</h3>
+    <p class="status" id="spStatus"></p>
+    <label class="help" for="cid">Client ID</label>
+    <input type="text" id="cid" placeholder="스포티파이 개발자 앱의 Client ID" autocomplete="off" spellcheck="false">
+    <p class="help">Redirect URI (스포티파이 앱 설정에 그대로 붙여넣기)</p>
+    <div class="uri"><code id="ruri"></code><button class="btn" id="copyUri" type="button">복사</button></div>
+    <div class="opt"><label><input type="checkbox" id="autoSw"> 재생 중인 곡에 맞춰 곡과 테마 자동 전환</label></div>
+    <div class="row">
+      <button class="btn primary" id="spConnect" type="button">스포티파이 연결</button>
+      <button class="btn" id="spDisconnect" type="button">연결 해제</button>
+    </div>
+    <details>
+      <summary>처음 연결하는 방법</summary>
+      <ol>
+        <li>developer.spotify.com/dashboard 에 로그인하고 <b>Create app</b>을 눌러요.</li>
+        <li>Redirect URIs에 위 주소를 붙여넣고, API 항목에서 <b>Web API</b>를 체크해 저장해요.</li>
+        <li>만든 앱의 <b>Client ID</b>를 복사해서 위 칸에 붙여넣어요.</li>
+        <li><b>스포티파이 연결</b>을 누르고 로그인한 뒤, 스포티파이에서 노래를 틀어요.</li>
+        <li>연결 후 권한 오류가 나면 앱 설정의 <b>User Management</b>에 내 스포티파이 이메일을 추가해요.</li>
+      </ol>
+    </details>
+
+    <h3>백업</h3>
+    <p class="help">저장한 가사와 기록은 이 브라우저와 주소에만 있어요. 다른 곳으로 옮길 때 내보내고 불러오세요.</p>
+    <div class="row">
+      <button class="btn" id="bkCopy" type="button">백업 복사</button>
+      <button class="btn" id="bkFile" type="button">백업 파일 저장</button>
+      <label class="btn" for="bkPick">파일 불러오기</label>
+      <input type="file" id="bkPick" accept=".json,application/json" hidden>
+    </div>
+    <textarea id="bkText" placeholder="복사한 백업을 여기에 붙여넣고 불러오기를 누르세요" style="min-height:90px"></textarea>
+    <div class="row end">
+      <button class="btn" id="bkLoad" type="button">붙여넣은 백업 불러오기</button>
+      <button class="btn primary" id="stClose" type="button">닫기</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="mResult" hidden>
+  <div class="sheet" role="dialog" aria-labelledby="rsTitle">
+    <h2 id="rsTitle">완료</h2>
+    <p class="help" id="rsSub"></p>
+    <div class="res-grid">
+      <div class="res"><span>타수 / 분 <em class="newrec" id="rsNewCpm" hidden>신기록</em></span><b id="rsCpm">0</b></div>
+      <div class="res"><span>정확도 <em class="newrec" id="rsNewAcc" hidden>신기록</em></span><b id="rsAcc">0%</b></div>
+      <div class="res"><span>걸린 시간</span><b id="rsTime">0:00</b></div>
+      <div class="res"><span>최대 콤보</span><b id="rsCombo">0</b></div>
+    </div>
+    <p class="help" id="rsBest"></p>
+    <div class="row end">
+      <button class="btn" id="rsPick" type="button">곡 고르기</button>
+      <button class="btn" id="rsRandom" type="button">랜덤 곡</button>
+      <button class="btn primary" id="rsAgain" type="button">다시 하기</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span id="toastMsg"></span><button id="toastAct" type="button" hidden></button></div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+  del(k) { try { localStorage.removeItem(k); } catch (e) {} }
+};
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const rand = (a, b) => a + Math.random() * (b - a);
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* ───────── concept themes ───────── */
+const THEMES = {
+  pure: { name: '청순', scheme: 'light',
+    c: { bg: '#eaf3fb', panel: 'rgba(255,255,255,.55)', fg: '#22344d', dim: '#7f95ad', accent: '#5f9fd8', accent2: '#f2b8cb', ok: '#22344d', err: '#de5b7b', line: 'rgba(34,52,77,.13)' },
+    bgimg: 'radial-gradient(90% 70% at 12% 0%,#ffffff 0%,rgba(255,255,255,0) 60%),radial-gradient(80% 60% at 100% 100%,#fde3ec 0%,rgba(253,227,236,0) 60%),linear-gradient(180deg,#e3effa,#f5f9fd)',
+    fd: "'Gowun Batang',serif", ft: "'Gowun Batang',serif", amb: { type: 'petal', colors: ['#f7c9d8', '#ffffff', '#cfe3f6'] }, key: 'petal', deco: '', title: 'plain',
+    lines: ['창문을 열면 새로 산 운동화처럼 하얀 아침이 와', '오래 기다린 마음은 생각보다 조용하게 피어나', '너와 걷던 길 위로 연한 바람이 천천히 불어', '서툰 말이라도 진심이면 충분하다고 믿을래', '우리가 처음 만난 계절을 아직 기억하고 있어', '손을 잡으면 어디든 갈 수 있을 것만 같아'] },
+  marine: { name: '마린룩', scheme: 'dark',
+    c: { bg: '#0d2142', panel: 'rgba(255,255,255,.06)', fg: '#f4f1e8', dim: '#8597b7', accent: '#e2b857', accent2: '#ffffff', ok: '#f4f1e8', err: '#ff7a7a', line: 'rgba(255,255,255,.13)' },
+    bgimg: 'radial-gradient(70% 50% at 50% 0%,#1f3d70 0%,rgba(31,61,112,0) 70%),repeating-linear-gradient(180deg,rgba(255,255,255,.028) 0 2px,transparent 2px 60px),linear-gradient(180deg,#0d2142,#071530)',
+    fd: "'Hahmlet',serif", ft: "'Hahmlet',serif", amb: { type: 'star', colors: ['#e2b857', '#ffffff'] }, key: 'star', deco: '', title: 'gold',
+    lines: ['하얀 세일러 칼라 위로 바다 냄새가 스며들어', '별을 세다 잠든 밤에도 소원 하나는 남겨둘게', '오늘의 항로는 네가 웃는 쪽으로 정해졌어', '갑판 위에 선 우리는 파도보다 먼저 달려가', '금빛 단추를 채우고 거울 앞에서 인사를 해', '무엇이든 말해봐, 오늘은 내가 들어줄 차례야'] },
+  retro: { name: '레트로 디스코', scheme: 'dark',
+    c: { bg: '#2a0d3d', panel: 'rgba(255,255,255,.07)', fg: '#ffeccc', dim: '#b993c9', accent: '#ff4f9a', accent2: '#ffc93c', ok: '#ffeccc', err: '#5ee0ff', line: 'rgba(255,236,204,.16)' },
+    bgimg: 'radial-gradient(60% 40% at 50% 110%,rgba(255,79,154,.45) 0%,rgba(255,79,154,0) 70%),linear-gradient(180deg,#1a0727 0%,#2a0d3d 60%,#4a1450 100%)',
+    fd: "'Bagel Fat One',sans-serif", ft: "'Do Hyeon',sans-serif", amb: { type: 'disco', colors: ['#ff4f9a', '#ffc93c', '#7b5cff', '#5ee0ff'] }, key: 'spark', deco: 'scan', title: 'retro',
+    lines: ['카세트테이프를 뒤집으면 또 다른 밤이 시작돼', '반짝이는 미러볼 아래서 박자를 놓치지 마', '엄마의 옛날 사진 속 원피스를 꺼내 입었어', '라디오 사연처럼 두근대는 마음을 보내볼게', '네온사인이 깜빡이면 우리 차례가 온 거야', '오늘 밤은 시계를 멈추고 끝까지 춤을 춰'] },
+  street: { name: '스트릿 힙합', scheme: 'dark',
+    c: { bg: '#0c0c0c', panel: 'rgba(255,255,255,.05)', fg: '#f4f4ee', dim: '#7d7d74', accent: '#ffe500', accent2: '#ff2e88', ok: '#f4f4ee', err: '#ff2e88', line: 'rgba(255,255,255,.14)' },
+    bgimg: 'linear-gradient(180deg,#0c0c0c,#151515)',
+    fd: "'Black Han Sans',sans-serif", ft: "'Black Han Sans',sans-serif", amb: { type: 'halftone', colors: ['#ffe500'] }, key: 'ink', deco: '', title: 'sticker',
+    lines: ['볼륨을 끝까지 올리고 골목을 무대로 바꿔', '남들이 정한 규칙은 내 스텝에 맞지 않아', '스프레이로 쓴 이름은 비가 와도 지워지지 않아', '박수는 나중에 받을게, 지금은 증명할 시간', '운동화 끈을 다시 묶고 비트 위에 올라타', '오늘 이 거리의 주인공은 바로 우리야'] },
+  rain: { name: '비 오는 밤', scheme: 'dark',
+    c: { bg: '#1a2130', panel: 'rgba(255,255,255,.05)', fg: '#dfe6ef', dim: '#74839a', accent: '#8db4dc', accent2: '#c7a6b0', ok: '#dfe6ef', err: '#ec9aa8', line: 'rgba(223,230,239,.13)' },
+    bgimg: 'linear-gradient(180deg,#131925,#222b3c)',
+    fd: "'Nanum Myeongjo',serif", ft: "'Nanum Myeongjo',serif", amb: { type: 'rain', colors: ['#9fb8d6'] }, key: 'drop', deco: 'vignette', title: 'plain',
+    lines: ['우산을 접었는데도 어깨가 자꾸만 젖어', '괜찮다는 말은 오늘도 목 끝에서 멈췄어', '지운 번호인데 손가락은 아직 기억하나 봐', '빗소리에 기대면 조금은 덜 외로운 것 같아', '하루가 길어서 너를 잊을 틈이 없었어', '언젠가는 웃으면서 이 밤을 꺼낼 수 있을까'] },
+  candy: { name: '캔디 팝', scheme: 'light',
+    c: { bg: '#fff0f6', panel: 'rgba(255,255,255,.7)', fg: '#3d1838', dim: '#b47aa0', accent: '#ff4f9e', accent2: '#ffc933', ok: '#3d1838', err: '#7a5cff', line: 'rgba(61,24,56,.13)' },
+    bgimg: 'radial-gradient(#ffd3e6 2.5px,transparent 3px) 0 0/30px 30px,linear-gradient(180deg,#fff5fa,#ffe6f1)',
+    fd: "'Jua',sans-serif", ft: "'Jua',sans-serif", amb: { type: 'heart', colors: ['#ff4f9e', '#ffc933', '#ff9cc8'] }, key: 'heart', deco: '', title: 'sticker',
+    lines: ['오늘 기분은 딸기 우유처럼 달콤한 핑크빛이야', '볼에 바람을 넣고 윙크 한 번이면 준비 끝', '설레는 마음이 들킬까 봐 괜히 더 크게 웃어', '사탕 껍질처럼 반짝이는 하루를 모아둘래', '답장이 오기 전까지 휴대폰을 열 번은 확인해', '너만 보면 심장이 통통 튀는 리듬으로 뛰어'] },
+  pinkhard: { name: '블랙 앤 핑크', scheme: 'dark',
+    c: { bg: '#0a090b', panel: 'rgba(255,143,181,.06)', fg: '#ffe3ec', dim: '#8f6e7b', accent: '#ff8fb5', accent2: '#ffffff', ok: '#ffe3ec', err: '#ff3b6b', line: 'rgba(255,143,181,.2)' },
+    bgimg: 'radial-gradient(60% 50% at 85% 5%,rgba(255,143,181,.2) 0%,rgba(255,143,181,0) 70%),linear-gradient(180deg,#0a090b,#130d11)',
+    fd: "'Black Han Sans',sans-serif", ft: "'IBM Plex Sans KR',sans-serif", amb: { type: 'sparkle', colors: ['#ff8fb5', '#ffffff'] }, key: 'shard', deco: '', title: 'glow',
+    lines: ['검은 장갑 위에 핑크빛 반지를 하나 더 껴', '마지막인 것처럼 오늘 밤을 전부 걸어볼래', '조명이 꺼져도 내 존재감은 꺼지지 않아', '달콤해 보여도 가시는 숨겨두지 않을 거야', '무대 끝에서 돌아보는 순간 모두 숨을 멈춰', '화려하게, 거침없이, 그게 내 방식이야'] },
+  fruit: { name: '서머 프루츠', scheme: 'light',
+    c: { bg: '#fff4ef', panel: 'rgba(255,255,255,.7)', fg: '#4b0f17', dim: '#bf7f7f', accent: '#e8233a', accent2: '#1fae69', ok: '#4b0f17', err: '#ff8a00', line: 'rgba(75,15,23,.13)' },
+    bgimg: 'radial-gradient(70% 50% at 0% 0%,#ffd3d3 0%,rgba(255,211,211,0) 70%),radial-gradient(60% 50% at 100% 100%,#c6f1da 0%,rgba(198,241,218,0) 70%),linear-gradient(180deg,#fff4ef,#fffaf7)',
+    fd: "'Bagel Fat One',sans-serif", ft: "'Jua',sans-serif", amb: { type: 'fruit', colors: ['#e8233a', '#1fae69', '#ffcf3a', '#ff7aa2'] }, key: 'juice', deco: '', title: 'sticker',
+    lines: ['수박 한 조각을 베어 물면 여름이 시작돼', '새콤한 레몬 같은 너 때문에 눈이 번쩍 뜨여', '아이스크림이 녹기 전에 해변까지 달려가자', '빨갛게 익은 체리처럼 볼이 물들어 버렸어', '파라솔 아래 누워서 파도 소리를 세어볼래', '이번 여름은 가장 상큼한 기억으로 남을 거야'] },
+  metal: { name: '쇠맛', scheme: 'dark',
+    c: { bg: '#050607', panel: 'rgba(200,210,220,.05)', fg: '#e9edf1', dim: '#6f7881', accent: '#cfd6dd', accent2: '#8f9bff', ok: '#e9edf1', err: '#ff4d5e', line: 'rgba(207,214,221,.16)' },
+    bgimg: 'radial-gradient(120% 70% at 50% -10%,#2b3037 0%,#0b0d10 55%,#050607 100%)',
+    fd: "'Orbit',sans-serif", ft: "'Orbit',sans-serif", amb: { type: 'chrome', colors: ['#cfd6dd', '#8f9bff'] }, key: 'shard', deco: 'chrome', title: 'chrome',
+    lines: ['차가운 금속 위로 푸른 신호가 깜빡이기 시작해', '다음 단계로 넘어가는 문은 내 손끝에서 열려', '거울 속의 나와 눈이 마주치면 시스템이 깨어나', '크롬빛 갑옷을 두르고 데이터의 바다를 건너', '멈추지 않는 엔진처럼 심장이 낮게 울려 퍼져', '경계선 너머의 세계에서 나는 더 강해져'] },
+  camcorder: { name: 'Y2K 캠코더', scheme: 'light',
+    c: { bg: '#dde5ee', panel: 'rgba(255,255,255,.45)', fg: '#1d2838', dim: '#76859b', accent: '#3a68b0', accent2: '#e04040', ok: '#1d2838', err: '#e04040', line: 'rgba(29,40,56,.13)' },
+    bgimg: 'linear-gradient(180deg,#cdd8e5,#eaeff4)',
+    fd: "'Gowun Dodum',sans-serif", ft: "'Gowun Dodum',sans-serif", amb: { type: 'snow', colors: ['#ffffff'] }, key: 'pixel', deco: 'grain cam', title: 'plain',
+    lines: ['오래된 캠코더 화면 속 너는 여전히 웃고 있어', '눈 내리는 운동장에 발자국을 나란히 남겼지', '테이프를 되감으면 그날의 공기가 들리는 것 같아', '흐릿하게 찍힌 사진이 더 선명하게 기억나', '말하지 못한 마음은 녹화 버튼처럼 빨갛게 깜빡여', '다음 장면에도 네가 나왔으면 좋겠어'] },
+  diva: { name: '디바', scheme: 'dark',
+    c: { bg: '#130c1d', panel: 'rgba(255,255,255,.05)', fg: '#f5ecff', dim: '#9080aa', accent: '#e6c37a', accent2: '#b8a1ff', ok: '#f5ecff', err: '#ff6b8b', line: 'rgba(230,195,122,.2)' },
+    bgimg: 'radial-gradient(80% 60% at 50% 0%,#2c1b46 0%,rgba(44,27,70,0) 70%),linear-gradient(180deg,#130c1d,#0b0712)',
+    fd: "'Hahmlet',serif", ft: "'Gowun Batang',serif", amb: { type: 'sparkle', colors: ['#e6c37a', '#ffffff', '#b8a1ff'] }, key: 'star', deco: '', title: 'gold',
+    lines: ['거울 속 나에게 반하는 건 오늘이 처음이 아니야', '진주 목걸이를 고쳐 매고 런웨이로 걸어 나가', '내가 고른 길이니까 망설일 이유가 없어', '반짝이는 건 조명이 아니라 내 자신감이야', '깊은 바다처럼 알 수 없는 눈빛으로 바라봐', '왕관은 무겁지만 나는 고개를 들고 걸어'] },
+  baroque: { name: '다크 바로크', scheme: 'dark',
+    c: { bg: '#120a0a', panel: 'rgba(201,162,74,.05)', fg: '#efe2d0', dim: '#8a7262', accent: '#c41a26', accent2: '#c9a24a', ok: '#efe2d0', err: '#ff7b54', line: 'rgba(201,162,74,.22)' },
+    bgimg: 'radial-gradient(70% 55% at 50% 40%,#2a1212 0%,#120a0a 70%,#070404 100%)',
+    fd: "'Song Myung',serif", ft: "'Song Myung',serif", amb: { type: 'smoke', colors: ['#7a1018', '#3a2a18'] }, key: 'petal', deco: 'vignette', title: 'gold',
+    lines: ['촛불이 흔들리는 복도 끝에서 누군가 나를 불러', '금박 액자 속 그림이 오늘따라 낯설게 보여', '달콤한 유혹일수록 대가는 더 무겁다는 걸 알아', '검은 날개가 돋아나는 꿈을 또다시 꾸었어', '성당의 종소리가 울리면 주문이 풀려버릴 거야', '어둠 속에서도 나는 너를 찾아낼 수 있어'] },
+  winter: { name: '겨울 그리움', scheme: 'light',
+    c: { bg: '#e8eef4', panel: 'rgba(255,255,255,.55)', fg: '#24313e', dim: '#7c8fa1', accent: '#557ea4', accent2: '#c9d6e3', ok: '#24313e', err: '#cf6476', line: 'rgba(36,49,62,.13)' },
+    bgimg: 'radial-gradient(70% 50% at 50% 0%,#ffffff 0%,rgba(255,255,255,0) 70%),linear-gradient(180deg,#dce5ee,#f3f6f9)',
+    fd: "'Nanum Myeongjo',serif", ft: "'Gowun Batang',serif", amb: { type: 'snow', colors: ['#ffffff', '#c9d6e3'] }, key: 'snow', deco: '', title: 'plain',
+    lines: ['하얀 입김 사이로 너의 이름을 조용히 불러봐', '기차역 시계는 오늘도 멈춘 듯 천천히 흘러', '눈이 그치면 꼭 다시 만나자던 약속이 생각나', '손난로를 쥐어도 마음 한쪽은 여전히 추워', '겨울이 지나면 우리도 봄처럼 다시 피어날까', '쌓인 눈 위에 보고 싶다는 말을 적어두었어'] },
+  summer: { name: '청량', scheme: 'light',
+    c: { bg: '#e4f6ff', panel: 'rgba(255,255,255,.6)', fg: '#0a3550', dim: '#5f93b2', accent: '#0098da', accent2: '#ffd93d', ok: '#0a3550', err: '#ff6a3d', line: 'rgba(10,53,80,.13)' },
+    bgimg: 'radial-gradient(60% 40% at 88% 4%,#fff6c2 0%,rgba(255,246,194,0) 70%),linear-gradient(180deg,#bde8ff,#ecf9ff)',
+    fd: "'Do Hyeon',sans-serif", ft: "'Gowun Dodum',sans-serif", amb: { type: 'bubble', colors: ['#ffffff', '#7fd3ff'] }, key: 'bubble', deco: '', title: 'plain',
+    lines: ['자전거 페달을 밟으면 바람이 교복을 부풀려', '운동장 끝까지 달리면 하늘이 더 가까워져', '계획대로 되지 않아도 오늘은 충분히 좋았어', '탄산음료를 따는 소리에 친구들이 돌아봐', '햇살이 쏟아지는 창가에서 너를 기다리고 있어', '우리가 함께라면 아주 멋진 하루가 될 거야'] },
+  dreamy: { name: '몽글 파스텔', scheme: 'light',
+    c: { bg: '#f3eeff', panel: 'rgba(255,255,255,.6)', fg: '#3a2c5e', dim: '#9a8fc0', accent: '#9070ff', accent2: '#ff9fd0', ok: '#3a2c5e', err: '#ff5f87', line: 'rgba(58,44,94,.13)' },
+    bgimg: 'linear-gradient(160deg,#efe7ff 0%,#fde9f5 60%,#e7f0ff 100%)',
+    fd: "'Dongle',sans-serif", ft: "'Gowun Dodum',sans-serif", fds: 1.55, amb: { type: 'aurora', colors: ['#c4b1ff', '#ffc2e2', '#b9d8ff'] }, key: 'star', deco: '', title: 'gradient',
+    lines: ['솜사탕 구름 위에서 낮잠을 자는 꿈을 꿨어', '자석처럼 끌리는 마음을 어떻게 숨겨야 할까', '보랏빛 별가루가 머리 위로 사르르 쏟아져', '비밀 일기장에 너의 이름을 작게 적어두었지', '말랑한 젤리처럼 마음이 자꾸만 녹아내려', '꿈에서 깨도 이 설렘은 그대로 남아 있을 거야'] },
+  fire: { name: '불꽃', scheme: 'dark',
+    c: { bg: '#170a06', panel: 'rgba(255,106,43,.06)', fg: '#ffe9d6', dim: '#957260', accent: '#ff6a2b', accent2: '#ffd27a', ok: '#ffe9d6', err: '#6ad0ff', line: 'rgba(255,106,43,.22)' },
+    bgimg: 'radial-gradient(70% 50% at 50% 115%,rgba(255,106,43,.45) 0%,rgba(255,106,43,0) 70%),linear-gradient(180deg,#0d0503,#1a0b06)',
+    fd: "'Gugi',sans-serif", ft: "'Gowun Batang',serif", amb: { type: 'ember', colors: ['#ff6a2b', '#ffd27a', '#ff3d1f'] }, key: 'ember', deco: '', title: 'glow',
+    lines: ['붉은 불꽃이 피어오르면 숨겨둔 마음도 타올라', '꽃잎처럼 흩날리는 불티 사이를 걸어가', '차갑게 식은 줄 알았던 마음에 다시 불이 붙어', '오래된 부채를 펼치면 바람이 노래를 불러', '재가 되어도 좋으니 지금 이 순간을 태울래', '밤하늘을 수놓은 불꽃처럼 강렬하게 남을 거야'] },
+  sporty: { name: '스포티', scheme: 'light',
+    c: { bg: '#d4d8db', panel: 'rgba(255,255,255,.5)', fg: '#0f1114', dim: '#646b72', accent: '#2340ff', accent2: '#ff5a1f', ok: '#0f1114', err: '#ff3b1f', line: 'rgba(15,17,20,.15)' },
+    bgimg: 'repeating-linear-gradient(115deg,rgba(255,255,255,.2) 0 2px,transparent 2px 24px),linear-gradient(180deg,#cdd2d6,#e3e6e8)',
+    fd: "'Black Han Sans',sans-serif", ft: "'IBM Plex Sans KR',sans-serif", amb: { type: 'speed', colors: ['#2340ff', '#ff5a1f', '#ffffff'] }, key: 'spark', deco: '', title: 'plain',
+    lines: ['넘어져도 다시 일어나는 법을 몸이 먼저 알아', '출발선에 서면 두려움은 등 뒤에 두고 와', '땀방울 하나하나가 오늘의 나를 증명해', '누가 뭐라 해도 나는 내 속도로 달릴 거야', '부서질수록 더 단단해지는 마음을 가졌어', '마지막 한 걸음까지 전력으로 부딪혀볼래'] }
+};
+
+/* ───────── song catalog: id, title, artist, artistEn, generation, theme, other titles, other artist names ───────── */
+const SONGS = [
+  ['snsd-itnw', '다시 만난 세계', '소녀시대', "Girls' Generation", 2, 'pure', ['Into The New World'], ['SNSD']],
+  ['snsd-genie', '소원을 말해봐', '소녀시대', "Girls' Generation", 2, 'marine', ['Genie'], ['SNSD']],
+  ['wg-tellme', 'Tell Me', '원더걸스', 'Wonder Girls', 2, 'retro', [], []],
+  ['kara-mister', '미스터', '카라', 'KARA', 2, 'candy', ['Mister'], []],
+  ['bb-lies', '거짓말', '빅뱅', 'BIGBANG', 2, 'street', ['Lies'], []],
+  ['bb-haru', '하루하루', '빅뱅', 'BIGBANG', 2, 'rain', ['Haru Haru'], []],
+  ['2ne1-best', '내가 제일 잘 나가', '2NE1', '2NE1', 2, 'street', ['I Am The Best'], ['투애니원']],
+  ['2ne1-hurts', '아파 (Slow)', '2NE1', '2NE1', 2, 'rain', ['It Hurts'], ['투애니원']],
+  ['shinee-replay', '누난 너무 예뻐 (Replay)', '샤이니', 'SHINee', 2, 'summer', ['Replay'], []],
+  ['tvxq-mirotic', '주문 (MIROTIC)', '동방신기', 'TVXQ!', 2, 'baroque', ['Mirotic'], ['TVXQ']],
+  ['twice-cheerup', 'CHEER UP', '트와이스', 'TWICE', 3, 'candy', [], []],
+  ['twice-tt', 'TT', '트와이스', 'TWICE', 3, 'candy', [], []],
+  ['rv-redflavor', '빨간 맛', '레드벨벳', 'Red Velvet', 3, 'fruit', ['Red Flavor'], []],
+  ['bp-aiiyl', '마지막처럼', '블랙핑크', 'BLACKPINK', 3, 'pinkhard', ["As If It's Your Last"], []],
+  ['bts-bst', '피 땀 눈물', '방탄소년단', 'BTS', 3, 'baroque', ['Blood Sweat & Tears'], []],
+  ['bts-spring', '봄날', '방탄소년단', 'BTS', 3, 'winter', ['Spring Day'], []],
+  ['svt-nice', '아주 NICE', '세븐틴', 'SEVENTEEN', 3, 'summer', ['Very Nice'], []],
+  ['exo-growl', '으르렁', '엑소', 'EXO', 3, 'street', ['Growl'], []],
+  ['gf-rough', '시간을 달려서', '여자친구', 'GFRIEND', 3, 'pure', ['Rough'], []],
+  ['omg-nonstop', '살짝 설렜어', '오마이걸', 'OH MY GIRL', 3, 'dreamy', ['Nonstop'], []],
+  ['mmm-starry', '별이 빛나는 밤', '마마무', 'MAMAMOO', 3, 'diva', ['Starry Night'], []],
+  ['aespa-nextlevel', 'Next Level', '에스파', 'aespa', 4, 'metal', [], []],
+  ['aespa-supernova', 'Supernova', '에스파', 'aespa', 4, 'metal', [], []],
+  ['ive-lovedive', 'LOVE DIVE', '아이브', 'IVE', 4, 'diva', [], []],
+  ['ive-iam', 'I AM', '아이브', 'IVE', 4, 'diva', [], []],
+  ['nj-ditto', 'Ditto', '뉴진스', 'NewJeans', 4, 'camcorder', [], []],
+  ['lsf-eve', '이브, 프시케 그리고 푸른 수염의 아내', '르세라핌', 'LE SSERAFIM', 4, 'sporty', ["Eve, Psyche & The Bluebeard's wife"], []],
+  ['idle-hwaa', '화(火花)', '(여자)아이들', 'i-dle', 4, 'fire', ['HWAA'], ['(G)I-DLE', '여자아이들', '아이들']],
+  ['itzy-dalla', '달라달라', '있지', 'ITZY', 4, 'sporty', ['DALLA DALLA'], []],
+  ['txt-crown', '어느날 머리에서 뿔이 자랐다 (CROWN)', '투모로우바이투게더', 'TOMORROW X TOGETHER', 4, 'dreamy', ['CROWN'], ['TXT']],
+  ['illit-magnetic', 'Magnetic', '아일릿', 'ILLIT', 5, 'dreamy', [], []],
+  ['tws-plot', '첫 만남은 계획대로 되지 않아', '투어스', 'TWS', 5, 'summer', ['plot twist'], []],
+  ['bnd-today', '오늘만 I LOVE YOU', '보이넥스트도어', 'BOYNEXTDOOR', 5, 'candy', [], []],
+  ['riize-love119', 'Love 119', '라이즈', 'RIIZE', 5, 'winter', [], []]
+].map(([id, title, artist, artistEn, gen, theme, alt, altArtist]) => ({ id, title, artist, artistEn, gen, theme, alt, altArtist }));
+const SONG_BY = Object.fromEntries(SONGS.map(s => [s.id, s]));
+
+/* ───────── persistence ───────── */
+const settings = Object.assign({ effects: 2, autoSwitch: true, clientId: '', lastSong: 'aespa-nextlevel', eng: 'keep', paren: true }, store.get('tg.settings', {}));
+const saveSettings = () => store.set('tg.settings', settings);
+let lyrics = store.get('tg.lyrics', {});
+let records = store.get('tg.records', {});
+const saveLyrics = () => store.set('tg.lyrics', lyrics);
+const saveRecords = () => store.set('tg.records', records);
+
+/* ───────── hangul ───────── */
+const CHO = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+const JUNG = 'ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ';
+const JONG = ['', 'ㄱ', 'ㄲ', 'ㄳ', 'ㄴ', 'ㄵ', 'ㄶ', 'ㄷ', 'ㄹ', 'ㄺ', 'ㄻ', 'ㄼ', 'ㄽ', 'ㄾ', 'ㄿ', 'ㅀ', 'ㅁ', 'ㅂ', 'ㅄ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+const SPLIT = { 'ㅘ': 'ㅗㅏ', 'ㅙ': 'ㅗㅐ', 'ㅚ': 'ㅗㅣ', 'ㅝ': 'ㅜㅓ', 'ㅞ': 'ㅜㅔ', 'ㅟ': 'ㅜㅣ', 'ㅢ': 'ㅡㅣ', 'ㄳ': 'ㄱㅅ', 'ㄵ': 'ㄴㅈ', 'ㄶ': 'ㄴㅎ', 'ㄺ': 'ㄹㄱ', 'ㄻ': 'ㄹㅁ', 'ㄼ': 'ㄹㅂ', 'ㄽ': 'ㄹㅅ', 'ㄾ': 'ㄹㅌ', 'ㄿ': 'ㄹㅍ', 'ㅀ': 'ㄹㅎ', 'ㅄ': 'ㅂㅅ' };
+const splitJ = j => (SPLIT[j] || j).split('');
+const isSyl = ch => !!ch && ch.charCodeAt(0) >= 0xAC00 && ch.charCodeAt(0) <= 0xD7A3;
+function keysOf(ch) {
+  if (!ch) return [];
+  const c = ch.charCodeAt(0);
+  if (c >= 0xAC00 && c <= 0xD7A3) {
+    const i = c - 0xAC00;
+    const jong = JONG[i % 28];
+    return [CHO[Math.floor(i / 588)], ...splitJ(JUNG[Math.floor((i % 588) / 28)]), ...(jong ? splitJ(jong) : [])];
+  }
+  if (c >= 0x3131 && c <= 0x318E) return splitJ(ch);
+  return [ch];
+}
+// While the IME is still composing, the syllable may have borrowed the next consonant (가 + ㄴ → 간 before 나).
+function composingOk(v, i, T) {
+  const a = keysOf(v);
+  const b = keysOf(T[i]).concat(isSyl(T[i + 1]) ? keysOf(T[i + 1]) : []);
+  return a.length <= b.length && a.every((k, j) => k === b[j]);
+}
+
+/* ───────── lyric cleanup ───────── */
+const TIME_RE = /\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
+function cleanText(t, opt) {
+  t = t.replace(/[​-‍﻿]/g, '').replace(/ /g, ' ')
+    .replace(/[‘’`´]/g, "'").replace(/[“”]/g, '"').replace(/…/g, '...').replace(/[–—]/g, '-').replace(/～/g, '~')
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '');
+  t = t.replace(/\[[^\]]*\]/g, '');
+  if (opt.paren) t = t.replace(/\([^)]*\)|（[^）]*）/g, '');
+  if (opt.eng === 'words') {
+    t = t.replace(/[A-Za-z][A-Za-z'\-]*/g, '');
+  } else if (opt.eng === 'lines') {
+    const words = t.split(/\s+/);
+    const lat = words.filter(w => /[A-Za-z]/.test(w) && !/[가-힣]/.test(w)).length;
+    const han = words.filter(w => /[가-힣]/.test(w)).length;
+    if (lat > han) t = '';
+  }
+  t = t.replace(/\s+/g, ' ').replace(/\s+([,.!?~])/g, '$1').replace(/^[\s,.!?'"~\-]+/, '').replace(/[\s,'"\-]+$/, '').trim();
+  if (opt.eng === 'words' && !/[가-힣0-9]/.test(t)) t = '';
+  return t;
+}
+function splitLong(t, max = 42) {
+  if (t.length <= max) return [t];
+  const out = [];
+  while (t.length > max) {
+    let cut = t.lastIndexOf(' ', Math.ceil(t.length / Math.ceil(t.length / max)) + 4);
+    if (cut < 8) cut = t.indexOf(' ', 8);
+    if (cut < 0) break;
+    out.push(t.slice(0, cut));
+    t = t.slice(cut + 1);
+  }
+  out.push(t);
+  return out.filter(Boolean);
+}
+function processLyrics(raw, opt) {
+  const lines = [], lrc = [];
+  let timed = 0;
+  for (const rawLine of raw.split(/\r?\n/)) {
+    const times = [];
+    TIME_RE.lastIndex = 0;
+    let m;
+    while ((m = TIME_RE.exec(rawLine))) {
+      const frac = m[3] ? parseInt(m[3].padEnd(3, '0').slice(0, 3), 10) : 0;
+      times.push(parseInt(m[1], 10) * 60000 + parseInt(m[2], 10) * 1000 + frac);
+    }
+    const text = cleanText(rawLine.replace(TIME_RE, ''), opt);
+    if (times.length) timed++;
+    if (!text) continue;
+    lines.push(...splitLong(text));
+    for (const t of times) lrc.push({ t, text });
+  }
+  lrc.sort((a, b) => a.t - b.t);
+  return { lines, lrc: timed >= 3 && lrc.length >= 2 ? lrc : null };
+}
+
+/* ───────── state ───────── */
+const state = { songId: SONG_BY[settings.lastSong] ? settings.lastSong : 'aespa-nextlevel', source: 'concept', mode: 'practice', themeId: '' };
+let S = null;
+let composing = false;
+let lastLen = 0;
+const inp = $('#inp');
+const song = () => SONG_BY[state.songId];
+const theme = () => THEMES[state.themeId];
+const recKey = () => state.songId + '|' + (state.mode === 'karaoke' ? 'karaoke' : state.source);
+
+/* ───────── theme application ───────── */
+const NOISE = (() => {
+  try {
+    const c = document.createElement('canvas'); c.width = c.height = 160;
+    const x = c.getContext('2d'); const d = x.createImageData(160, 160);
+    for (let i = 0; i < d.data.length; i += 4) { const v = Math.random() * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; }
+    x.putImageData(d, 0, 0); return 'url(' + c.toDataURL() + ')';
+  } catch (e) { return 'none'; }
+})();
+document.documentElement.style.setProperty('--noise', NOISE);
+
+function applyTheme(id, animate = true) {
+  if (state.themeId === id) return;
+  const th = THEMES[id];
+  const go = () => {
+    const r = document.documentElement.style;
+    for (const [k, v] of Object.entries(th.c)) r.setProperty('--' + k, v);
+    r.setProperty('--bgimg', th.bgimg);
+    r.setProperty('--fd', th.fd + ",'IBM Plex Sans KR',sans-serif");
+    r.setProperty('--ft', th.ft + ",'IBM Plex Sans KR',sans-serif");
+    r.setProperty('--fds', th.fds || 1);
+    r.colorScheme = th.scheme;
+    document.body.dataset.deco = th.deco;
+    document.body.dataset.title = th.title;
+    state.themeId = id;
+    setupAmbient(th.amb);
+  };
+  if (animate && !RM && state.themeId) {
+    $('#app').classList.add('switching');
+    setTimeout(() => { go(); $('#app').classList.remove('switching'); }, 200);
+  } else go();
+}
+
+/* ───────── canvases ───────── */
+const bgC = $('#bg'), bctx = bgC.getContext('2d');
+const fxC = $('#fx'), fctx = fxC.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  for (const c of [bgC, fxC]) { c.width = W * DPR; c.height = H * DPR; }
+  bctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  fctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  if (amb.def) setupAmbient(amb.def);
+}
+
+function drawShape(ctx, type, s) {
+  ctx.beginPath();
+  switch (type) {
+    case 'petal': ctx.ellipse(0, 0, s, s * 0.55, 0, 0, Math.PI * 2); ctx.fill(); break;
+    case 'heart':
+      ctx.moveTo(0, s * 0.35);
+      ctx.bezierCurveTo(-s * 1.1, -s * 0.45, -s * 0.45, -s * 1.1, 0, -s * 0.45);
+      ctx.bezierCurveTo(s * 0.45, -s * 1.1, s * 1.1, -s * 0.45, 0, s * 0.35); ctx.fill(); break;
+    case 'star':
+      for (let i = 0; i < 8; i++) { const r = i % 2 ? s * 0.28 : s; const a = i * Math.PI / 4; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
+      ctx.closePath(); ctx.fill(); break;
+    case 'shard': ctx.moveTo(0, -s); ctx.lineTo(s * 0.45, s * 0.6); ctx.lineTo(-s * 0.35, s * 0.3); ctx.closePath(); ctx.fill(); break;
+    case 'pixel': ctx.rect(-s / 2, -s / 2, s, s); ctx.fill(); break;
+    case 'drop': ctx.moveTo(0, -s); ctx.quadraticCurveTo(s * 0.8, s * 0.2, 0, s * 0.7); ctx.quadraticCurveTo(-s * 0.8, s * 0.2, 0, -s); ctx.fill(); break;
+    case 'bubble': ctx.arc(0, 0, s, 0, Math.PI * 2); ctx.lineWidth = Math.max(1, s * 0.15); ctx.stroke(); break;
+    case 'spark': ctx.rect(-s * 0.12, -s, s * 0.24, s * 2); ctx.fill(); break;
+    default: ctx.arc(0, 0, s, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+/* ambient background per concept */
+const AMB = {
+  petal: { n: 26, init: p => { p.s = rand(5, 11); p.vx = rand(.15, .5); p.vy = rand(.25, .7); p.vr = rand(-.02, .02); p.a = rand(.35, .8); } },
+  star: { n: 60, init: p => { p.s = rand(1.2, 3.6); p.sp = rand(.6, 2); p.a = 1; } },
+  disco: { n: 6, init: p => { p.s = rand(140, 280); p.cx = rand(0, 1); p.cy = rand(0, 1); p.rr = rand(60, 200); p.sp = rand(.1, .3) * (Math.random() < .5 ? -1 : 1); p.a = .16; } },
+  halftone: { n: 0 },
+  rain: { n: 100, init: p => { p.s = rand(12, 28); p.vy = rand(9, 15); p.vx = -2; p.a = rand(.12, .32); } },
+  heart: { n: 18, init: p => { p.s = rand(5, 11); p.vy = -rand(.25, .7); p.vx = 0; p.a = rand(.25, .55); } },
+  sparkle: { n: 70, init: p => { p.s = rand(2, 6); p.sp = rand(.5, 1.6); p.a = 1; } },
+  fruit: { n: 16, init: p => { p.s = rand(8, 22); p.vy = -rand(.1, .35); p.vx = rand(-.15, .15); p.a = rand(.18, .35); } },
+  chrome: { n: 22, init: p => { p.s = rand(30, 160); p.vx = rand(.3, 1.4) * (Math.random() < .5 ? -1 : 1); p.a = rand(.08, .22); } },
+  snow: { n: 85, init: p => { p.s = rand(1, 3.4); p.vy = rand(.3, 1.1); p.vx = 0; p.a = rand(.5, .95); } },
+  smoke: { n: 7, init: p => { p.s = rand(220, 400); p.vx = rand(-.2, .2); p.vy = rand(-.12, .12); p.a = rand(.12, .22); } },
+  bubble: { n: 26, init: p => { p.s = rand(4, 15); p.vy = -rand(.35, 1); p.vx = 0; p.a = rand(.35, .7); } },
+  aurora: { n: 5, init: p => { p.s = rand(260, 440); p.vx = rand(-.25, .25); p.vy = rand(-.2, .2); p.a = .34; } },
+  ember: { n: 60, init: p => { p.s = rand(1, 2.6); p.vy = -rand(.5, 1.8); p.vx = rand(-.3, .3); p.a = rand(.5, 1); } },
+  speed: { n: 36, init: p => { p.s = rand(60, 220); p.vx = rand(6, 14); p.vy = 0; p.a = rand(.06, .16); } }
+};
+const amb = { type: '', def: null, parts: [], colors: [] };
+function setupAmbient(def) {
+  amb.def = def; amb.type = def.type; amb.colors = def.colors;
+  const cfg = AMB[def.type];
+  let n = cfg.n; if (RM) n = Math.ceil(n * 0.4);
+  if (W < 640) n = Math.ceil(n * 0.6);
+  amb.parts = Array.from({ length: n }, () => {
+    const p = { x: rand(0, W), y: rand(0, H), r: rand(0, 6.28), vr: 0, ph: rand(0, 6.28), c: pick(def.colors), vx: 0, vy: 0 };
+    cfg.init(p); return p;
+  });
+}
+let pulse = 0, keyPulse = 0;
+function drawAmbient(t, dt) {
+  const ctx = bctx; ctx.clearRect(0, 0, W, H);
+  const sp = RM ? 0.25 : 1;
+  const k = dt * 0.06 * sp;
+  const boost = 1 + pulse * 0.9;
+  const type = amb.type;
+  ctx.save();
+  if (type === 'halftone') {
+    const g = W < 640 ? 18 : 24; ctx.fillStyle = amb.colors[0];
+    for (let y = g / 2; y < H; y += g) for (let x = g / 2; x < W; x += g) {
+      const v = 0.5 + 0.5 * Math.sin(x * 0.012 + y * 0.009 + t * 0.0011 * sp);
+      const r = (0.4 + v * 2.4) * (1 + pulse * 0.35);
+      ctx.globalAlpha = 0.07 + v * 0.1; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.28); ctx.fill();
+    }
+    ctx.restore(); return;
+  }
+  if (type === 'chrome') {
+    ctx.strokeStyle = amb.colors[0];
+    const hz = H * 0.62;
+    ctx.globalAlpha = 0.09 * boost; ctx.lineWidth = 1;
+    for (let i = -12; i <= 12; i++) { ctx.beginPath(); ctx.moveTo(W / 2 + i * 18, hz); ctx.lineTo(W / 2 + i * W * 0.14, H); ctx.stroke(); }
+    const off = (t * 0.02 * sp) % 1;
+    for (let i = 0; i < 14; i++) { const f = Math.pow((i + off) / 14, 2.2); const y = hz + f * (H - hz); ctx.globalAlpha = 0.04 + f * 0.14 * boost; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+  }
+  if (type === 'disco' || type === 'ember') ctx.globalCompositeOperation = 'lighter';
+  for (const p of amb.parts) {
+    switch (type) {
+      case 'petal': p.x += p.vx * k * 10; p.y += p.vy * k * 10; p.r += p.vr * k * 10; p.x += Math.sin(t * 0.001 + p.ph) * 0.3; break;
+      case 'disco': p.ph += p.sp * k * 0.05; break;
+      case 'rain': case 'snow': case 'heart': case 'fruit': case 'bubble': case 'ember':
+        p.y += p.vy * k * 10; p.x += (p.vx + Math.sin(t * 0.0012 + p.ph) * (type === 'snow' ? 0.35 : 0.2)) * k * 10; break;
+      case 'chrome': case 'speed': p.x += p.vx * k * 10; break;
+      case 'smoke': case 'aurora': p.x += p.vx * k * 10; p.y += p.vy * k * 10; break;
+    }
+    if (p.y > H + 40) { p.y = -40; p.x = rand(0, W); }
+    if (p.y < -60) { p.y = H + 40; p.x = rand(0, W); }
+    if (p.x > W + 250) p.x = -250;
+    if (p.x < -250) p.x = W + 250;
+    ctx.fillStyle = ctx.strokeStyle = p.c;
+    ctx.globalAlpha = Math.min(1, p.a * boost);
+    switch (type) {
+      case 'star': ctx.globalAlpha = (0.2 + 0.8 * Math.abs(Math.sin(t * 0.001 * p.sp * sp + p.ph))) * Math.min(1, boost); ctx.save(); ctx.translate(p.x, p.y); drawShape(ctx, 'star', p.s * (1 + pulse * 0.4)); ctx.restore(); break;
+      case 'sparkle': { const v = Math.pow(Math.max(0, Math.sin(t * 0.0012 * p.sp * sp + p.ph)), 10); if (v < 0.02) break; ctx.globalAlpha = v * Math.min(1, boost); ctx.save(); ctx.translate(p.x, p.y); drawShape(ctx, 'star', p.s * (0.6 + v)); ctx.restore(); break; }
+      case 'disco': { const x = p.cx * W + Math.cos(p.ph) * p.rr, y = p.cy * H + Math.sin(p.ph) * p.rr; const g = ctx.createRadialGradient(x, y, 0, x, y, p.s * (1 + pulse * 0.25)); g.addColorStop(0, p.c); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(x - p.s * 1.3, y - p.s * 1.3, p.s * 2.6, p.s * 2.6); break; }
+      case 'rain': ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + p.vx * 2, p.y + p.s); ctx.stroke(); break;
+      case 'chrome': ctx.fillRect(p.x, p.y, p.s, 1); break;
+      case 'speed': ctx.fillRect(p.x, p.y, p.s, 1.5); break;
+      case 'smoke': case 'aurora': { const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.s); g.addColorStop(0, p.c); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(p.x - p.s, p.y - p.s, p.s * 2, p.s * 2); break; }
+      case 'ember': ctx.globalAlpha = p.a * (0.5 + 0.5 * Math.sin(t * 0.01 + p.ph)) * Math.min(1.4, boost); ctx.beginPath(); ctx.arc(p.x, p.y, p.s, 0, 6.28); ctx.fill(); break;
+      case 'fruit': case 'snow': ctx.beginPath(); ctx.arc(p.x, p.y, p.s, 0, 6.28); ctx.fill(); break;
+      default: ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); drawShape(ctx, type === 'heart' ? 'heart' : type === 'bubble' ? 'bubble' : 'petal', p.s); ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+
+/* keystroke particles */
+const FXD = {
+  petal: { g: .02, sp: 3, s: [4, 8], life: 60 }, star: { g: .05, sp: 4, s: [3, 7], life: 45 }, spark: { g: .14, sp: 6, s: [3, 7], life: 30 },
+  ink: { g: .18, sp: 5, s: [1.5, 4], life: 35 }, drop: { g: .22, sp: 3.5, s: [3, 6], life: 40 }, heart: { g: -.04, sp: 3, s: [4, 8], life: 55 },
+  shard: { g: .2, sp: 6.5, s: [3, 8], life: 35 }, juice: { g: .2, sp: 5, s: [2, 5], life: 40 }, pixel: { g: .12, sp: 4, s: [2, 5], life: 40 },
+  snow: { g: .02, sp: 2.5, s: [1.5, 3.5], life: 70 }, bubble: { g: -.06, sp: 2.5, s: [3, 8], life: 60 }, ember: { g: -.05, sp: 3.5, s: [1, 2.5], life: 50 }
+};
+const fxParts = [];
+const mctx = document.createElement('canvas').getContext('2d');
+function caretXY() {
+  const r = inp.getBoundingClientRect();
+  const cs = getComputedStyle(inp);
+  mctx.font = cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+  const pos = inp.selectionStart == null ? inp.value.length : inp.selectionStart;
+  const w = mctx.measureText(inp.value.slice(0, pos)).width;
+  const x = Math.min(r.right - 6, r.left + parseFloat(cs.paddingLeft || 0) + w - inp.scrollLeft);
+  return { x, y: r.top + r.height * 0.62 };
+}
+const FX_N = [0, 3, 6, 11];
+function emitKey() {
+  keyPulse = Math.min(1, keyPulse + 0.28);
+  const n = FX_N[settings.effects] || 0;
+  if (!n) return;
+  const th = theme(); const type = th.key; const d = FXD[type];
+  const { x, y } = caretXY();
+  const colors = [th.c.accent, th.c.accent2].concat(type === 'juice' ? ['#ffcf3a'] : []);
+  for (let i = 0; i < n; i++) {
+    const a = rand(-Math.PI * 0.95, -Math.PI * 0.05);
+    const v = rand(0.4, 1) * d.sp * (RM ? 0.5 : 1);
+    fxParts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, r: rand(0, 6.28), vr: rand(-.2, .2), s: rand(d.s[0], d.s[1]), life: 0, max: d.life * rand(.7, 1.2), type, c: pick(colors), g: d.g });
+  }
+  if (fxParts.length > 500) fxParts.splice(0, fxParts.length - 500);
+}
+function drawFx(dt) {
+  fctx.clearRect(0, 0, W, H);
+  const k = Math.min(3, dt / 16.7);
+  for (let i = fxParts.length - 1; i >= 0; i--) {
+    const p = fxParts[i];
+    p.life += k; if (p.life > p.max) { fxParts.splice(i, 1); continue; }
+    p.vy += p.g * k; p.x += p.vx * k; p.y += p.vy * k; p.r += p.vr * k; p.vx *= 0.985;
+    const f = 1 - p.life / p.max;
+    fctx.globalAlpha = Math.min(1, f * 1.4);
+    fctx.fillStyle = fctx.strokeStyle = p.c;
+    fctx.save(); fctx.translate(p.x, p.y); fctx.rotate(p.r);
+    const shape = { juice: 'circle', ink: 'circle', snow: 'circle', ember: 'circle' }[p.type] || p.type;
+    drawShape(fctx, shape, p.s * (0.6 + 0.4 * f));
+    fctx.restore();
+  }
+  fctx.globalAlpha = 1;
+}
+
+/* ───────── session ───────── */
+function newSession() {
+  const s = song(); const ly = lyrics[s.id];
+  const kind = state.mode === 'karaoke' && ly && ly.lrc ? 'karaoke' : 'practice';
+  if (kind !== 'karaoke' && state.mode === 'karaoke') state.mode = 'practice';
+  let lines;
+  if (kind === 'karaoke') lines = ly.lrc.map(x => x.text);
+  else if (state.source === 'lyrics' && ly && ly.lines.length) lines = ly.lines.slice();
+  else { state.source = 'concept'; lines = shuffle(THEMES[s.theme].lines.slice()); }
+  S = { kind, lines, lrc: kind === 'karaoke' ? ly.lrc : null, idx: kind === 'karaoke' ? -1 : 0,
+    started: 0, strokes: 0, totalChars: 0, errChars: 0, eval: [], val: [], err: new Set(), okc: new Set(),
+    combo: 0, maxCombo: 0, done: false, lineDone: false, justAdv: 0,
+    kStart: 0, kPaused: 0, kOffset: 0 };
+  inp.value = ''; lastLen = 0; composing = false;
+  $('#mResult').hidden = true;
+  renderMeta(); renderDock(); render();
+}
+function resetLineState() { S.eval = []; S.val = []; S.err = new Set(); S.okc = new Set(); S.lineDone = false; }
+function finalizeLine() {
+  const T = S.lines[S.idx]; if (T == null || S.lineFinal) return;
+  for (let j = 0; j < T.length; j++) if (S.eval[j] !== 'ok') S.err.add(j);
+  S.totalChars += T.length; S.errChars += S.err.size;
+  S.lineFinal = true;
+}
+function advance() {
+  finalizeLine();
+  S.idx++; S.lineFinal = false; resetLineState();
+  inp.value = ''; lastLen = 0; S.justAdv = performance.now();
+  if (S.idx >= S.lines.length) finish(); else render();
+}
+function onInput(e) {
+  if (!S || S.done) return;
+  if (S.kind === 'karaoke' && (S.idx < 0 || S.lineDone)) { inp.value = ''; return; }
+  const T = S.lines[S.idx];
+  let V = inp.value;
+  if (V[0] === ' ' && T[0] !== ' ' && performance.now() - S.justAdv < 500) { V = V.replace(/^ +/, ''); inp.value = V; }
+  if (V.length > T.length + 1) { V = V.slice(0, T.length + 1); inp.value = V; }
+  if (!S.started && V.length) S.started = performance.now();
+  const cl = Math.min(composing ? V.length - 1 : V.length, T.length);
+  for (let j = Math.max(cl, 0); j < S.eval.length; j++) { S.eval[j] = undefined; S.val[j] = undefined; }
+  let hadErr = false;
+  for (let j = 0; j < cl; j++) {
+    if (S.eval[j] && S.val[j] === V[j]) continue;
+    S.val[j] = V[j];
+    if (V[j] === T[j]) {
+      S.eval[j] = 'ok';
+      if (!S.okc.has(j)) { S.okc.add(j); S.strokes += keysOf(T[j]).length; }
+      S.combo++; if (S.combo > S.maxCombo) S.maxCombo = S.combo;
+      if (S.combo === 50 || (S.combo > 0 && S.combo % 100 === 0)) comboPop(S.combo);
+    } else { S.eval[j] = 'err'; S.err.add(j); S.combo = 0; hadErr = true; }
+  }
+  const typed = !e || !e.inputType || !e.inputType.startsWith('delete');
+  if (typed && V.length) emitKey();
+  if (hadErr) shake();
+  lastLen = V.length;
+  if (!composing && V.length >= T.length) {
+    if (S.kind === 'karaoke') { finalizeLine(); S.lineDone = true; inp.value = ''; }
+    else { advance(); return; }
+  }
+  renderCur(); renderStats();
+}
+inp.addEventListener('compositionstart', () => { composing = true; });
+inp.addEventListener('compositionend', () => { composing = false; setTimeout(() => onInput(null), 0); });
+inp.addEventListener('input', e => { if (typeof e.isComposing === 'boolean') composing = e.isComposing; onInput(e); });
+inp.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    if (!composing && S && !S.done && S.kind === 'practice' && S.idx >= 0 && inp.value.length >= S.lines[S.idx].length) advance();
+  }
+});
+const typingEl = $('#typing');
+typingEl.addEventListener('mousedown', e => { if (!e.target.closest('button')) { e.preventDefault(); inp.focus(); } });
+typingEl.addEventListener('click', e => { if (!e.target.closest('button')) inp.focus(); });
+inp.addEventListener('focus', () => typingEl.classList.add('focused'));
+inp.addEventListener('blur', () => typingEl.classList.remove('focused'));
+
+function shake() {
+  if (RM) return;
+  typingEl.classList.remove('shake'); void typingEl.offsetWidth; typingEl.classList.add('shake');
+}
+function comboPop(n) {
+  if (!settings.effects) return;
+  const el = document.createElement('div'); el.className = 'combo-pop'; el.textContent = n + ' COMBO';
+  document.body.appendChild(el); setTimeout(() => el.remove(), 950);
+}
+
+/* ───────── rendering ───────── */
+function renderMeta() {
+  const s = song(); const th = THEMES[s.theme];
+  $('#mGen').textContent = s.gen + '세대';
+  $('#mConcept').textContent = '컨셉 · ' + (state.override ? THEMES[state.override].name : th.name);
+  $('#mTitle').textContent = s.title;
+  $('#mArtist').textContent = s.artist + (s.artist !== s.artistEn ? ' · ' + s.artistEn : '');
+  const r = records[recKey()];
+  const label = state.mode === 'karaoke' ? '노래방' : state.source === 'lyrics' ? '내 가사' : '컨셉 문장';
+  $('#mRecord').textContent = r ? `${label} 최고 기록 ${r.bestCpm}타 · 정확도 ${r.bestAcc}% · ${r.plays}회 · 마지막 ${r.last}` : `${label} 기록이 아직 없어요`;
+  document.title = s.title + ' · 타건 무대';
+}
+function renderDock() {
+  const ly = lyrics[state.songId];
+  $$('#segSource button').forEach(b => b.classList.toggle('on', b.dataset.v === state.source && state.mode !== 'karaoke'));
+  $$('#segMode button').forEach(b => b.classList.toggle('on', b.dataset.v === state.mode));
+  $('#btnLyrics').textContent = ly ? '가사 수정' : '가사 넣기';
+  const k = S && S.kind === 'karaoke';
+  $('#kCtl').hidden = !k; $('#kBar').hidden = !k;
+  $('#btnEnd').hidden = !S;
+  renderKCtl();
+}
+function renderKCtl() {
+  if (!S || S.kind !== 'karaoke') return;
+  const viaSp = spLinked();
+  $('#kPlay').hidden = viaSp;
+  $('#kPlay').textContent = !S.kStart ? '노래 시작과 함께 누르기' : S.kPaused ? '이어서' : '일시정지';
+  $('#kOff').textContent = '싱크 ' + (S.kOffset >= 0 ? '+' : '') + (S.kOffset / 1000).toFixed(1) + '초';
+  $('#kSrc').textContent = viaSp ? '스포티파이 재생 위치에 맞춰 흘러가요' : '';
+}
+function render() {
+  if (!S) return;
+  const L = S.lines, i = S.idx;
+  $('#lPrev').textContent = i > 0 ? L[i - 1] : '';
+  $('#lNext1').textContent = L[i + 1] || '';
+  $('#lNext2').textContent = L[i + 2] || '';
+  renderCur(); renderStats();
+}
+function renderCur() {
+  const el = $('#lCur');
+  if (!S) { el.textContent = ''; return; }
+  if (S.idx < 0) { el.className = 'line cur'; el.innerHTML = `<span class="wait">${S.kStart || spLinked() ? '전주 중 · 첫 줄을 기다리는 중' : '노래를 틀고 시작 버튼을 눌러주세요'}</span>`; return; }
+  const T = S.lines[S.idx] || '';
+  if (S.lineDone) { el.className = 'line cur done'; el.textContent = T; return; }
+  el.className = 'line cur';
+  const V = inp.value;
+  const cl = Math.min(composing ? V.length - 1 : V.length, T.length);
+  const at = composing ? V.length - 1 : V.length;
+  let h = '';
+  for (let j = 0; j < T.length; j++) {
+    const ch = T[j]; let cls = 'c';
+    if (ch === ' ') cls += ' sp';
+    if (j < cl) cls += S.eval[j] === 'ok' ? ' ok' : ' err';
+    else if (composing && j === V.length - 1) cls += composingOk(V[j], j, T) ? ' comp' : ' err';
+    else if (j === at) cls += ' at';
+    h += `<span class="${cls}">${esc(ch)}</span>`;
+  }
+  el.innerHTML = h;
+}
+function liveStats() {
+  const now = S.done ? S.ended : performance.now();
+  const el = S.started ? (now - S.started) : 0;
+  const cpm = el > 1500 ? Math.round(S.strokes / (el / 60000)) : 0;
+  const curEval = S.lineFinal ? 0 : S.eval.filter(Boolean).length;
+  const evaluated = S.totalChars + curEval;
+  const errs = S.errChars + (S.lineFinal ? 0 : S.err.size);
+  const acc = evaluated ? Math.max(0, Math.round((evaluated - errs) / evaluated * 1000) / 10) : 100;
+  return { cpm, acc, el };
+}
+function renderStats() {
+  if (!S) return;
+  const { cpm, acc } = liveStats();
+  $('#sCpm').textContent = cpm;
+  $('#sAcc').textContent = acc;
+  $('#sProg').textContent = Math.min(Math.max(S.idx, 0) + (S.idx >= 0 ? 1 : 0), S.lines.length) + ' / ' + S.lines.length;
+  $('#sCombo').textContent = S.combo;
+  $('#pBar').style.width = (Math.max(S.idx, 0) / S.lines.length * 100) + '%';
+}
+
+/* ───────── finishing and records ───────── */
+function finish(partial) {
+  if (!S || S.done) return;
+  if (partial && S.idx >= 0 && S.idx < S.lines.length && !S.lineFinal) {
+    const n = S.eval.filter(Boolean).length;
+    S.totalChars += n; S.errChars += [...S.err].filter(j => j < n).length; S.lineFinal = true;
+  }
+  S.done = true; S.ended = performance.now();
+  if (!S.started || S.totalChars < 10) { toast('기록할 만큼 치지 않았어요. 처음부터 다시 시작할게요.'); newSession(); return; }
+  const cpm = Math.round(S.strokes / ((S.ended - S.started) / 60000));
+  const acc = Math.max(0, Math.round((S.totalChars - S.errChars) / S.totalChars * 1000) / 10);
+  const key = recKey();
+  const prev = records[key] || { bestCpm: 0, bestAcc: 0, plays: 0 };
+  const newCpm = cpm > prev.bestCpm, newAcc = acc > prev.bestAcc;
+  const d = new Date();
+  records[key] = { bestCpm: Math.max(cpm, prev.bestCpm), bestAcc: Math.max(acc, prev.bestAcc), plays: prev.plays + 1, last: `${d.getMonth() + 1}/${d.getDate()}` };
+  saveRecords();
+  const sec = Math.round((S.ended - S.started) / 1000);
+  $('#rsTitle').textContent = song().title + (partial ? ' 중간 기록' : ' 완료');
+  $('#rsSub').textContent = (S.kind === 'karaoke' ? '노래방 모드' : state.source === 'lyrics' ? '내 가사' : '컨셉 문장') + ' · ' + S.lines.length + '줄';
+  $('#rsCpm').textContent = cpm; $('#rsAcc').textContent = acc + '%';
+  $('#rsTime').textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+  $('#rsCombo').textContent = S.maxCombo;
+  $('#rsNewCpm').hidden = !(newCpm && prev.plays); $('#rsNewAcc').hidden = !(newAcc && prev.plays);
+  $('#rsBest').textContent = `이 곡 최고 기록 ${records[key].bestCpm}타 · 정확도 ${records[key].bestAcc}% · ${records[key].plays}번째 플레이`;
+  renderMeta(); renderStats();
+  openModal('#mResult');
+  if ((newCpm || newAcc) && prev.plays && settings.effects) burst();
+}
+function burst() {
+  const th = theme(); const d = FXD[th.key];
+  for (let i = 0; i < 80; i++) {
+    const a = rand(0, Math.PI * 2), v = rand(2, 9);
+    fxParts.push({ x: W / 2, y: H * 0.4, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 2, r: rand(0, 6), vr: rand(-.2, .2), s: rand(d.s[0], d.s[1]) * 1.4, life: 0, max: 80, type: th.key, c: pick([th.c.accent, th.c.accent2]), g: Math.abs(d.g) + .05 });
+  }
+}
+
+/* ───────── karaoke clock ───────── */
+function spLinked() { return !!(SP.tokens && SP.track && SP.matchId === state.songId); }
+function kClock() {
+  if (spLinked()) return SP.progress + (SP.playing ? performance.now() - SP.at : 0) + S.kOffset;
+  if (!S.kStart) return null;
+  return (S.kPaused || performance.now()) - S.kStart + S.kOffset;
+}
+function tickKaraoke() {
+  if (!S || S.done || S.kind !== 'karaoke') return;
+  const t = kClock();
+  const L = S.lrc;
+  if (t == null) return;
+  let a = -1;
+  for (let i = 0; i < L.length; i++) { if (L[i].t <= t) a = i; else break; }
+  if (a > S.idx) {
+    if (S.idx >= 0) finalizeLine();
+    S.idx = a; S.lineFinal = false; resetLineState(); inp.value = ''; lastLen = 0;
+    render();
+  } else if (a < S.idx && spLinked()) {
+    // the listener scrubbed backwards in Spotify: jump back without scoring
+    S.idx = a; S.lineFinal = false; resetLineState(); inp.value = ''; render();
+  }
+  if (S.idx >= 0) {
+    const cur = L[S.idx], nxt = L[S.idx + 1];
+    const end = nxt ? nxt.t : cur.t + 6000;
+    $('#kBarFill').style.width = Math.min(100, Math.max(0, (t - cur.t) / (end - cur.t) * 100)) + '%';
+    if (!nxt && t > cur.t + 6000) { finalizeLine(); finish(); }
+  } else {
+    $('#kBarFill').style.width = '0%';
+  }
+}
+$('#kPlay').addEventListener('click', () => {
+  if (!S) return;
+  if (!S.kStart) S.kStart = performance.now();
+  else if (S.kPaused) { S.kStart += performance.now() - S.kPaused; S.kPaused = 0; }
+  else S.kPaused = performance.now();
+  renderKCtl(); renderCur(); inp.focus();
+});
+$('#kMinus').addEventListener('click', () => { if (S) { S.kOffset -= 500; renderKCtl(); } });
+$('#kPlus').addEventListener('click', () => { if (S) { S.kOffset += 500; renderKCtl(); } });
+
+/* ───────── beat ───────── */
+const beat = { bpm: 0, taps: [], origin: 0 };
+function renderBeat() { $('#bpmVal').textContent = beat.bpm || '—'; $('#beatVal').textContent = beat.bpm ? beat.bpm : ''; }
+$('#btnBeat').addEventListener('click', () => { $('#beatPop').hidden = !$('#beatPop').hidden; });
+$('#bpmClose').addEventListener('click', () => { $('#beatPop').hidden = true; inp.focus(); });
+$('#tapBtn').addEventListener('pointerdown', e => {
+  e.preventDefault();
+  const now = performance.now();
+  if (beat.taps.length && now - beat.taps[beat.taps.length - 1] > 2000) beat.taps = [];
+  beat.taps.push(now); if (beat.taps.length > 8) beat.taps.shift();
+  if (beat.taps.length >= 3) {
+    const iv = []; for (let i = 1; i < beat.taps.length; i++) iv.push(beat.taps[i] - beat.taps[i - 1]);
+    beat.bpm = Math.round(60000 / (iv.reduce((a, b) => a + b, 0) / iv.length));
+  }
+  beat.origin = now; keyPulse = 1; renderBeat();
+});
+$('#bpmMinus').addEventListener('click', () => { if (beat.bpm > 40) { beat.bpm--; renderBeat(); } });
+$('#bpmPlus').addEventListener('click', () => { if (beat.bpm) { beat.bpm++; renderBeat(); } });
+$('#bpmOff').addEventListener('click', () => { beat.bpm = 0; beat.taps = []; renderBeat(); });
+
+/* ───────── drawer ───────── */
+const drawer = { gen: 0, only: false };
+function renderGenChips() {
+  $('#genChips').innerHTML = [[0, '전체'], [2, '2세대'], [3, '3세대'], [4, '4세대'], [5, '5세대']]
+    .map(([g, l]) => `<button type="button" class="chip${drawer.gen === g ? ' on' : ''}" data-g="${g}">${l}</button>`).join('');
+}
+function renderSongList() {
+  const q = $('#q').value.trim().toLowerCase().replace(/\s+/g, '');
+  const match = s => !q || [s.title, s.artist, s.artistEn, THEMES[s.theme].name, ...s.alt, ...s.altArtist].some(v => v.toLowerCase().replace(/\s+/g, '').includes(q));
+  const list = SONGS.filter(s => match(s) && (!drawer.gen || s.gen === drawer.gen) && (!drawer.only || lyrics[s.id]));
+  let h = '', g = 0;
+  for (const s of list) {
+    if (s.gen !== g) { g = s.gen; h += `<div class="gh">${g}세대</div>`; }
+    const th = THEMES[s.theme]; const ly = lyrics[s.id];
+    const best = Math.max(...['concept', 'lyrics', 'karaoke'].map(k => (records[s.id + '|' + k] || {}).bestCpm || 0));
+    h += `<button type="button" class="song${s.id === state.songId ? ' cur' : ''}" data-id="${s.id}">
+      <span class="sw" style="background:linear-gradient(135deg,${th.c.bg} 0 52%,${th.c.accent} 52% 76%,${th.c.accent2} 76%)"></span>
+      <span style="min-width:0"><div class="t">${esc(s.title)}</div><div class="a">${esc(s.artist)} · ${th.name}</div></span>
+      <span class="tags">${best ? `<span class="mono">${best}타</span>` : ''}${ly ? '<span class="tag">가사</span>' : ''}${ly && ly.lrc ? '<span class="tag">노래방</span>' : ''}</span>
+    </button>`;
+  }
+  $('#songList').innerHTML = h || '<div class="empty">찾는 곡이 없어요. 다른 이름이나 그룹명으로 검색해보세요.</div>';
+}
+function openDrawer() { renderGenChips(); renderSongList(); $('#drawer').classList.add('open'); $('#scrim').classList.add('on'); setTimeout(() => $('#q').focus(), 50); }
+function closeDrawer() { $('#drawer').classList.remove('open'); $('#scrim').classList.remove('on'); }
+$('#btnSearch').addEventListener('click', openDrawer);
+$('#drawerClose').addEventListener('click', closeDrawer);
+$('#scrim').addEventListener('click', closeDrawer);
+$('#q').addEventListener('input', renderSongList);
+$('#genChips').addEventListener('click', e => { const b = e.target.closest('[data-g]'); if (!b) return; drawer.gen = +b.dataset.g; renderGenChips(); renderSongList(); });
+$('#onlyLyrics').addEventListener('click', e => { drawer.only = !drawer.only; e.currentTarget.classList.toggle('on', drawer.only); renderSongList(); });
+$('#songList').addEventListener('click', e => { const b = e.target.closest('[data-id]'); if (!b) return; selectSong(b.dataset.id); closeDrawer(); inp.focus(); });
+$('#q').addEventListener('keydown', e => { if (e.key === 'Enter') { const f = $('#songList [data-id]'); if (f) f.click(); } });
+
+function selectSong(id, opts = {}) {
+  const s = SONG_BY[id]; if (!s) return;
+  state.songId = id; settings.lastSong = id; saveSettings();
+  state.override = null;
+  applyTheme(s.theme);
+  const ly = lyrics[id];
+  state.source = ly && ly.lines.length ? 'lyrics' : 'concept';
+  if (opts.karaoke && ly && ly.lrc) state.mode = 'karaoke';
+  else if (state.mode === 'karaoke' && !(ly && ly.lrc)) state.mode = 'practice';
+  newSession();
+}
+function randomSong() {
+  const pool = SONGS.filter(s => s.id !== state.songId);
+  selectSong(pick(pool).id); inp.focus();
+}
+$('#btnRandom').addEventListener('click', randomSong);
+
+/* ───────── dock controls ───────── */
+$('#segSource').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.v === 'lyrics' && !lyrics[state.songId]) { openLyrics(); return; }
+  state.source = b.dataset.v; if (state.mode === 'karaoke') state.mode = 'practice';
+  newSession(); inp.focus();
+});
+$('#segMode').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.v === 'karaoke' && !(lyrics[state.songId] && lyrics[state.songId].lrc)) {
+    toast('노래방 모드는 시간이 적힌 가사(LRC)를 넣으면 쓸 수 있어요.'); openLyrics(); return;
+  }
+  state.mode = b.dataset.v; newSession(); inp.focus();
+});
+$('#btnEnd').addEventListener('click', () => { if (S && S.started && !S.done) finish(true); else toast('타자를 시작하면 끝내기로 중간 기록을 볼 수 있어요.'); });
+
+/* ───────── modals ───────── */
+let lastFocus = null;
+function openModal(sel) { lastFocus = document.activeElement; $(sel).hidden = false; const f = $(sel).querySelector('textarea,input[type=text],.btn.primary'); if (f) setTimeout(() => f.focus(), 30); }
+function closeModal(sel) { $(sel).hidden = true; if (lastFocus && lastFocus.focus) lastFocus.focus(); }
+$$('.modal').forEach(m => m.addEventListener('mousedown', e => { if (e.target === m) closeModal('#' + m.id); }));
+
+/* lyrics modal */
+function lyOpt() { return { eng: ($('#lyEng input:checked') || {}).value || 'keep', paren: $('#lyParen').checked }; }
+function lyPreview() {
+  const raw = $('#lyRaw').value;
+  if (!raw.trim()) { $('#lyStat').textContent = ''; $('#lyPrev').hidden = true; return; }
+  const r = processLyrics(raw, lyOpt());
+  $('#lyStat').textContent = `${r.lines.length}줄로 정리됐어요 · ` + (r.lrc ? `시간 정보 ${r.lrc.length}줄, 노래방 모드 사용 가능` : '시간 정보가 없어서 연습 모드로만 쓸 수 있어요');
+  $('#lyPrev').hidden = false; $('#lyPrev').textContent = r.lines.slice(0, 6).join('\n') + (r.lines.length > 6 ? '\n…' : '');
+}
+function openLyrics() {
+  const s = song(); const ly = lyrics[s.id];
+  $('#lyTitle').textContent = s.title + ' 가사 ' + (ly ? '수정' : '넣기');
+  $('#lyRaw').value = ly ? ly.raw : '';
+  const eng = ly ? ly.opt.eng : settings.eng;
+  $$('#lyEng input').forEach(i => { i.checked = i.value === eng; });
+  $('#lyParen').checked = ly ? ly.opt.paren : settings.paren;
+  $('#lyDelete').hidden = !ly;
+  lyPreview(); openModal('#mLyrics');
+}
+$('#btnLyrics').addEventListener('click', openLyrics);
+$('#lyRaw').addEventListener('input', lyPreview);
+$('#lyEng').addEventListener('change', lyPreview);
+$('#lyParen').addEventListener('change', lyPreview);
+$('#lyCancel').addEventListener('click', () => closeModal('#mLyrics'));
+$('#lySave').addEventListener('click', () => {
+  const raw = $('#lyRaw').value; const opt = lyOpt();
+  const r = processLyrics(raw, opt);
+  if (!r.lines.length) { $('#lyStat').textContent = '칠 수 있는 줄이 없어요. 영어 처리 옵션을 바꾸거나 가사를 다시 붙여넣어 주세요.'; return; }
+  lyrics[state.songId] = { raw, opt, lines: r.lines, lrc: r.lrc };
+  settings.eng = opt.eng; settings.paren = opt.paren; saveSettings(); saveLyrics();
+  closeModal('#mLyrics');
+  state.source = 'lyrics';
+  if (state.mode === 'karaoke' && !r.lrc) state.mode = 'practice';
+  newSession(); inp.focus();
+  toast(r.lrc ? '저장했어요. 노래방 모드도 쓸 수 있어요.' : '저장했어요. 이제 내 가사로 연습해요.');
+});
+$('#lyDelete').addEventListener('click', () => {
+  delete lyrics[state.songId]; saveLyrics();
+  closeModal('#mLyrics'); state.source = 'concept'; state.mode = 'practice'; newSession();
+  toast('저장된 가사를 지웠어요.');
+});
+
+/* settings modal */
+function openSettings(focusSpotify) {
+  $$('#segFx button').forEach(b => b.classList.toggle('on', +b.dataset.v === settings.effects));
+  $('#cid').value = settings.clientId;
+  $('#ruri').textContent = redirectUri();
+  $('#autoSw').checked = settings.autoSwitch;
+  $('#bkText').value = '';
+  $('#bkFile').hidden = spAllowed() === 'framed';
+  renderSpStatus();
+  openModal('#mSettings');
+  if (focusSpotify) setTimeout(() => $('#spSection').scrollIntoView({ block: 'start' }), 40);
+}
+$('#btnSettings').addEventListener('click', () => openSettings(false));
+$('#stClose').addEventListener('click', () => closeModal('#mSettings'));
+$('#segFx').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; settings.effects = +b.dataset.v; saveSettings(); $$('#segFx button').forEach(x => x.classList.toggle('on', x === b)); });
+$('#cid').addEventListener('change', () => { settings.clientId = $('#cid').value.trim(); saveSettings(); });
+$('#autoSw').addEventListener('change', () => { settings.autoSwitch = $('#autoSw').checked; saveSettings(); });
+$('#copyUri').addEventListener('click', () => copyText(redirectUri(), $('#ruri')));
+
+async function copyText(text, fallbackEl) {
+  try { await navigator.clipboard.writeText(text); toast('복사했어요.'); }
+  catch (e) {
+    if (fallbackEl) { const r = document.createRange(); r.selectNodeContents(fallbackEl); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+    toast('자동 복사가 막혀 있어요. 선택된 내용을 직접 복사해주세요.');
+  }
+}
+
+/* backup */
+function backupJSON() { return JSON.stringify({ app: 'tageon-stage', v: 1, lyrics, records, settings: { effects: settings.effects, autoSwitch: settings.autoSwitch, clientId: settings.clientId } }); }
+function importBackup(text) {
+  let d; try { d = JSON.parse(text); } catch (e) { toast('백업 형식이 아니에요. 내보낸 내용을 그대로 붙여넣어 주세요.'); return; }
+  if (!d || d.app !== 'tageon-stage') { toast('타건 무대에서 내보낸 백업이 아니에요.'); return; }
+  Object.assign(lyrics, d.lyrics || {});
+  for (const [k, r] of Object.entries(d.records || {})) {
+    const p = records[k];
+    records[k] = p ? { bestCpm: Math.max(p.bestCpm, r.bestCpm), bestAcc: Math.max(p.bestAcc, r.bestAcc), plays: Math.max(p.plays, r.plays), last: p.last } : r;
+  }
+  if (d.settings && d.settings.clientId && !settings.clientId) settings.clientId = d.settings.clientId;
+  saveLyrics(); saveRecords(); saveSettings();
+  $('#cid').value = settings.clientId;
+  toast(`불러왔어요. 가사 ${Object.keys(d.lyrics || {}).length}곡, 기록 ${Object.keys(d.records || {}).length}개`);
+  selectSong(state.songId);
+}
+$('#bkCopy').addEventListener('click', () => { $('#bkText').value = backupJSON(); copyText($('#bkText').value, null); $('#bkText').select(); });
+$('#bkFile').addEventListener('click', () => {
+  try {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([backupJSON()], { type: 'application/json' }));
+    a.download = 'tageon-backup.json'; document.body.appendChild(a); a.click(); a.remove();
+  } catch (e) { toast('파일 저장이 막혀 있어요. 백업 복사를 써주세요.'); }
+});
+$('#bkLoad').addEventListener('click', () => { if ($('#bkText').value.trim()) importBackup($('#bkText').value.trim()); });
+$('#bkPick').addEventListener('change', e => { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => importBackup(String(r.result)); r.readAsText(f); e.target.value = ''; });
+
+/* result modal */
+$('#rsAgain').addEventListener('click', () => { closeModal('#mResult'); newSession(); inp.focus(); });
+$('#rsRandom').addEventListener('click', () => { closeModal('#mResult'); randomSong(); });
+$('#rsPick').addEventListener('click', () => { closeModal('#mResult'); openDrawer(); });
+
+/* toast */
+let toastT = 0;
+function toast(msg, act, fn) {
+  $('#toastMsg').textContent = msg;
+  const b = $('#toastAct'); b.hidden = !act;
+  if (act) { b.textContent = act; b.onclick = () => { fn(); $('#toast').classList.remove('on'); }; }
+  $('#toast').classList.add('on');
+  clearTimeout(toastT); toastT = setTimeout(() => $('#toast').classList.remove('on'), act ? 7000 : 3200);
+}
+
+/* keyboard shortcuts */
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); $('#drawer').classList.contains('open') ? closeDrawer() : openDrawer(); return; }
+  if (e.key === 'Escape') {
+    const open = $$('.modal').find(m => !m.hidden);
+    if (open) { closeModal('#' + open.id); return; }
+    if ($('#drawer').classList.contains('open')) { closeDrawer(); inp.focus(); return; }
+    if (!$('#beatPop').hidden) { $('#beatPop').hidden = true; return; }
+    newSession(); inp.focus();
+  }
+});
+
+/* ───────── Spotify (Authorization Code with PKCE) ───────── */
+const SP = { tokens: store.get('tg.sp', null), track: null, progress: 0, playing: false, at: 0, matchId: null, error: '', backoff: 0 };
+const SCOPES = 'user-read-currently-playing user-read-playback-state';
+function redirectUri() { return location.origin + location.pathname; }
+function spAllowed() {
+  let framed = false; try { framed = window.top !== window; } catch (e) { framed = true; }
+  if (framed) return 'framed';
+  if (location.protocol === 'https:' || ['127.0.0.1', '[::1]'].includes(location.hostname)) return 'ok';
+  return 'insecure';
+}
+function b64url(buf) { return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+function randStr(n) { const cs = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'; return Array.from(crypto.getRandomValues(new Uint8Array(n)), x => cs[x % cs.length]).join(''); }
+async function spConnect() {
+  settings.clientId = $('#cid').value.trim(); saveSettings();
+  const ok = spAllowed();
+  if (ok === 'framed') { toast('이 미리보기 화면에서는 스포티파이에 연결할 수 없어요. GitHub Pages 주소로 열어주세요.'); return; }
+  if (ok === 'insecure') { toast('스포티파이는 https 주소나 http://127.0.0.1 에서만 연결돼요.'); return; }
+  if (!settings.clientId) { toast('Client ID를 먼저 붙여넣어 주세요.'); $('#cid').focus(); return; }
+  const verifier = randStr(64);
+  const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+  store.set('tg.pkce', verifier);
+  const p = new URLSearchParams({ client_id: settings.clientId, response_type: 'code', redirect_uri: redirectUri(), code_challenge_method: 'S256', code_challenge: challenge, scope: SCOPES });
+  location.href = 'https://accounts.spotify.com/authorize?' + p;
+}
+async function tokenRequest(body) {
+  const r = await fetch('https://accounts.spotify.com/api/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error_description || j.error || ('HTTP ' + r.status));
+  SP.tokens = { a: j.access_token, r: j.refresh_token || (SP.tokens && SP.tokens.r), exp: Date.now() + (j.expires_in || 3600) * 1000 };
+  store.set('tg.sp', SP.tokens);
+}
+async function handleCallback() {
+  const q = new URLSearchParams(location.search);
+  if (!q.has('code') && !q.has('error')) return;
+  history.replaceState({}, '', redirectUri());
+  if (q.get('error')) { toast('스포티파이 연결을 취소했어요.'); return; }
+  try {
+    await tokenRequest({ client_id: settings.clientId, grant_type: 'authorization_code', code: q.get('code'), redirect_uri: redirectUri(), code_verifier: store.get('tg.pkce', '') });
+    store.del('tg.pkce');
+    toast('스포티파이에 연결됐어요. 스포티파이에서 노래를 틀어보세요.');
+  } catch (e) { SP.error = '연결 실패: ' + e.message; toast('스포티파이 연결에 실패했어요. 설정에서 Client ID와 Redirect URI를 확인해주세요.'); }
+}
+async function accessToken() {
+  if (!SP.tokens) return null;
+  if (SP.tokens.exp - 60000 < Date.now()) {
+    try { await tokenRequest({ grant_type: 'refresh_token', refresh_token: SP.tokens.r, client_id: settings.clientId }); }
+    catch (e) { spDisconnect(); SP.error = '로그인이 만료됐어요. 다시 연결해주세요.'; return null; }
+  }
+  return SP.tokens.a;
+}
+function spDisconnect() { SP.tokens = null; SP.track = null; SP.matchId = null; store.del('tg.sp'); renderSp(); renderSpStatus(); }
+$('#spConnect').addEventListener('click', spConnect);
+$('#spDisconnect').addEventListener('click', () => { spDisconnect(); toast('연결을 해제했어요.'); });
+$('#btnSpotify').addEventListener('click', () => openSettings(true));
+
+const norm = s => (s || '').toLowerCase().replace(/\(.*?\)|\[.*?\]/g, '').replace(/[^0-9a-z가-힣]/g, '');
+function matchTrack(tr) {
+  const arts = tr.artists.map(norm);
+  const tn = norm(tr.name.split(' - ')[0]);
+  const byArtist = SONGS.filter(s => [s.artist, s.artistEn, ...s.altArtist].map(norm).some(a => a && arts.includes(a)));
+  const titled = byArtist.find(s => [s.title, ...s.alt].map(norm).some(t => t && tn && (t === tn || (t.length > 2 && tn.includes(t)) || (tn.length > 2 && t.includes(tn)))));
+  return { song: titled || null, artistSong: byArtist[0] || null };
+}
+async function poll() {
+  if (!SP.tokens || document.hidden) return;
+  if (SP.backoff > Date.now()) return;
+  const tok = await accessToken(); if (!tok) return;
+  try {
+    const r = await fetch('https://api.spotify.com/v1/me/player/currently-playing', { headers: { Authorization: 'Bearer ' + tok } });
+    if (r.status === 204) { SP.playing = false; SP.error = ''; renderSp(); return; }
+    if (r.status === 401) { SP.tokens.exp = 0; return; }
+    if (r.status === 403) { SP.error = '권한이 없어요. 스포티파이 앱의 User Management에 내 이메일을 추가했는지 확인해주세요.'; renderSp(); renderSpStatus(); SP.backoff = Date.now() + 30000; return; }
+    if (r.status === 429) { SP.backoff = Date.now() + (parseInt(r.headers.get('Retry-After') || '10', 10) * 1000); return; }
+    if (!r.ok) return;
+    const j = await r.json();
+    SP.error = '';
+    if (!j.item || j.currently_playing_type !== 'track') { SP.playing = false; renderSp(); return; }
+    const tr = { id: j.item.id, name: j.item.name, artists: (j.item.artists || []).map(a => a.name) };
+    SP.progress = j.progress_ms || 0; SP.playing = !!j.is_playing; SP.at = performance.now();
+    const changed = !SP.track || SP.track.id !== tr.id;
+    SP.track = tr;
+    if (changed) onTrackChange(tr);
+    renderSp();
+  } catch (e) { SP.error = '스포티파이에 연결할 수 없어요.'; renderSp(); }
+}
+function onTrackChange(tr) {
+  const m = matchTrack(tr);
+  SP.matchId = m.song ? m.song.id : null;
+  if (!settings.autoSwitch) { renderKCtl(); return; }
+  if (m.song) {
+    const go = () => selectSong(m.song.id, { karaoke: true });
+    if (m.song.id === state.songId) { if (lyrics[m.song.id] && lyrics[m.song.id].lrc && state.mode !== 'karaoke') { state.mode = 'karaoke'; newSession(); } else renderKCtl(); return; }
+    if (S && S.started && !S.done && S.kind === 'practice') toast(`지금 재생: ${m.song.title}`, '이 곡으로', go);
+    else { go(); toast(`${m.song.title} 무대로 바꿨어요`); }
+  } else if (m.artistSong) {
+    state.override = m.artistSong.theme; applyTheme(m.artistSong.theme); renderMeta();
+    toast(`${m.artistSong.artist} 곡이라 ${THEMES[m.artistSong.theme].name} 테마로 바꿨어요`);
+  }
+}
+function renderSp() {
+  const b = $('#btnSpotify');
+  b.classList.toggle('on', !!SP.tokens);
+  b.classList.toggle('playing', !!(SP.tokens && SP.playing));
+  $('#spLabel').textContent = !SP.tokens ? '스포티파이 연결' : SP.track && SP.playing ? SP.track.name + ' · ' + SP.track.artists[0] : '스포티파이 연결됨';
+  $('#mLive').hidden = !(SP.playing && SP.matchId === state.songId);
+}
+function renderSpStatus() {
+  const a = spAllowed();
+  $('#spStatus').textContent = SP.error ? SP.error
+    : a === 'framed' ? '지금은 미리보기 화면이라 연결할 수 없어요. GitHub Pages에 올린 주소에서 연결해주세요.'
+    : a === 'insecure' ? '이 주소에서는 연결할 수 없어요. https 주소나 http://127.0.0.1 로 열어주세요.'
+    : SP.tokens ? '연결됨. 스포티파이에서 노래를 틀면 자동으로 따라와요.' : '아직 연결하지 않았어요.';
+  $('#spDisconnect').hidden = !SP.tokens;
+}
+
+/* ───────── main loop ───────── */
+let lastT = performance.now(), statT = 0;
+const recStart = performance.now();
+function loop(t) {
+  const dt = Math.min(100, t - lastT); lastT = t;
+  let bp = 0;
+  if (beat.bpm) { const per = 60000 / beat.bpm; const ph = (((t - beat.origin) % per) + per) % per / per; bp = Math.pow(1 - ph, 4); }
+  keyPulse *= Math.pow(0.9, dt / 16.7);
+  pulse = Math.max(bp * (settings.effects ? 1 : 0.4), keyPulse * 0.6);
+  document.documentElement.style.setProperty('--pulse', pulse.toFixed(3));
+  drawAmbient(t, dt);
+  drawFx(dt);
+  tickKaraoke();
+  if (t - statT > 250) {
+    statT = t;
+    if (S && !S.done && S.started) renderStats();
+    if (document.body.dataset.deco && document.body.dataset.deco.includes('cam')) {
+      const s = Math.floor((t - recStart) / 1000);
+      $('#recTime').textContent = [s / 3600, (s % 3600) / 60, s % 60].map(v => String(Math.floor(v)).padStart(2, '0')).join(':');
+    }
+  }
+  requestAnimationFrame(loop);
+}
+
+/* ───────── boot ───────── */
+(function boot() {
+  const d = new Date();
+  const mon = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'][d.getMonth()];
+  $('#dateStamp').textContent = `${d.getHours() < 12 ? 'AM' : 'PM'} ${((d.getHours() + 11) % 12) + 1}:${String(d.getMinutes()).padStart(2, '0')}  ${mon}.${d.getDate()} ${d.getFullYear()}`;
+  resize(); addEventListener('resize', resize);
+  const s = song();
+  applyTheme(s.theme, false);
+  state.source = lyrics[s.id] && lyrics[s.id].lines.length ? 'lyrics' : 'concept';
+  newSession(); renderBeat(); renderSp();
+  requestAnimationFrame(loop);
+  handleCallback().then(() => { renderSp(); poll(); });
+  setInterval(poll, 3000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
+})();
+})();
+</script>
+
+</body>
+</html>
