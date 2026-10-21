@@ -628,7 +628,7 @@ function processLyrics(raw, opt) {
 /* ───────── lyric lookup (LRCLIB, fetched at runtime; nothing stored in code) ───────── */
 async function lrclibSearch(track, artist) {
   try {
-    const r = await fetch('https://lrclib.net/api/search?' + new URLSearchParams({ track_name: track, artist_name: artist }));
+    const r = await fetch('https://lrclib.net/api/search?' + new URLSearchParams({ track_name: track, artist_name: artist }), { signal: AbortSignal.timeout(8000) });
     return r.ok ? await r.json() : [];
   } catch (e) { return []; }
 }
@@ -1426,16 +1426,20 @@ async function poll() {
     renderSp();
   } catch (e) { SP.error = '스포티파이에 연결할 수 없어요.'; renderSp(); }
 }
-async function onTrackChange(tr) {
+// runs in the background so the theme switch never waits on the lyric lookup
+async function fetchTrackLyrics(s, tr) {
+  const got = await autoLyrics(s, tr);
+  if (!SP.track || SP.track.id !== tr.id) return;
+  if (!got) { toast(`${s.title} 가사를 찾지 못했어요. 가사 넣기에서 붙여넣어 주세요.`); return; }
+  if (s.id !== state.songId) { toast(`${s.title} 가사를 자동으로 가져왔어요`); return; }
+  const go = () => selectSong(s.id, { karaoke: true });
+  if (S && S.started && !S.done) toast(`${s.title} 가사를 가져왔어요`, '노래방으로', go);
+  else { go(); toast(`${s.title} 가사를 가져왔어요. 노래방 모드로 바꿨어요`); }
+}
+function onTrackChange(tr) {
   const m = matchTrack(tr);
   SP.matchId = m.song ? m.song.id : null;
-  if (m.song && !lyrics[m.song.id]) {
-    const got = await autoLyrics(m.song, tr);
-    if (!SP.track || SP.track.id !== tr.id) return;
-    if (got) toast(`${m.song.title} 가사를 자동으로 가져왔어요`);
-    else if (!settings.autoSwitch) toast(`${m.song.title} 가사를 찾지 못했어요. 가사 넣기에서 붙여넣어 주세요.`);
-    if (got && m.song.id === state.songId) { selectSong(m.song.id, { karaoke: true }); return; }
-  }
+  if (m.song && !lyrics[m.song.id]) fetchTrackLyrics(m.song, tr);
   if (!settings.autoSwitch) { renderKCtl(); return; }
   if (m.song) {
     const go = () => selectSong(m.song.id, { karaoke: true });
@@ -1445,7 +1449,7 @@ async function onTrackChange(tr) {
   } else if (m.artistSong) {
     state.override = m.artistSong.theme; applyTheme(m.artistSong.theme); renderMeta();
     toast(`${m.artistSong.artist} 곡이라 ${THEMES[m.artistSong.theme].name} 테마로 바꿨어요`);
-  }
+  } else toast(`곡 목록에 없는 곡이라 테마를 그대로 둘게요: ${tr.name} · ${tr.artists[0] || ''}`);
 }
 function renderSp() {
   const b = $('#btnSpotify');
