@@ -307,7 +307,8 @@ body[data-deco~=vignette] #deco::after{content:'';position:absolute;inset:0;back
 <div class="modal" id="mLyrics" hidden>
   <div class="sheet" role="dialog" aria-labelledby="lyTitle">
     <h2 id="lyTitle">가사 넣기</h2>
-    <p class="help">가사 사이트에서 복사해서 붙여넣으세요. 이 브라우저에만 저장돼요. <b>[00:12.34]</b>처럼 시간이 적힌 가사(LRC)를 넣으면 노래방 모드도 쓸 수 있어요.</p>
+    <p class="help"><b>자동으로 찾기</b>를 누르면 LRCLIB(공개 가사 DB)에서 시간 정보가 있는 가사를 가져와요. 없으면 가사 사이트에서 복사해 붙여넣으세요. 이 브라우저에만 저장돼요.</p>
+    <div class="row"><button class="btn" id="lyFind" type="button">자동으로 찾기</button></div>
     <textarea id="lyRaw" placeholder="여기에 가사를 붙여넣기"></textarea>
     <h3>영어 가사</h3>
     <div class="opt" id="lyEng">
@@ -622,6 +623,43 @@ function processLyrics(raw, opt) {
   }
   lrc.sort((a, b) => a.t - b.t);
   return { lines, lrc: timed >= 3 && lrc.length >= 2 ? lrc : null };
+}
+
+/* ───────── lyric lookup (LRCLIB, fetched at runtime; nothing stored in code) ───────── */
+async function lrclibSearch(track, artist) {
+  try {
+    const r = await fetch('https://lrclib.net/api/search?' + new URLSearchParams({ track_name: track, artist_name: artist }));
+    return r.ok ? await r.json() : [];
+  } catch (e) { return []; }
+}
+function pickLyric(list, durMs) {
+  const dur = durMs ? durMs / 1000 : 0;
+  const ok = list.filter(x => !x.instrumental && (x.syncedLyrics || x.plainLyrics) && !(x.duration && x.duration < 60));
+  const score = x => (x.syncedLyrics ? 0 : 1000) + (dur && x.duration ? Math.abs(x.duration - dur) : 50);
+  ok.sort((a, b) => score(a) - score(b));
+  return ok[0] ? ok[0].syncedLyrics || ok[0].plainLyrics : '';
+}
+// tries Spotify's own names first (if given), then the catalog's titles/artists
+async function findLyrics(s, tr) {
+  const tries = [];
+  if (tr) tries.push([tr.name, tr.artists[0]]);
+  for (const t of [s.title, ...s.alt]) for (const a of [s.artist, s.artistEn, ...s.altArtist]) tries.push([t, a]);
+  const seen = new Set();
+  for (const [t, a] of tries) {
+    const k = t + '|' + a; if (!t || !a || seen.has(k)) continue; seen.add(k);
+    const raw = pickLyric(await lrclibSearch(t, a), tr && tr.dur);
+    if (raw) return raw;
+    if (seen.size >= 4) break;
+  }
+  return '';
+}
+async function autoLyrics(s, tr) {
+  if (lyrics[s.id]) return true;
+  const raw = await findLyrics(s, tr); if (!raw) return false;
+  const opt = { eng: settings.eng, paren: settings.paren };
+  const r = processLyrics(raw, opt); if (!r.lines.length) return false;
+  lyrics[s.id] = { raw, opt, lines: r.lines, lrc: r.lrc, auto: true }; saveLyrics();
+  return true;
 }
 
 /* ───────── state ───────── */
@@ -1192,6 +1230,13 @@ function openLyrics() {
   $('#lyDelete').hidden = !ly;
   lyPreview(); openModal('#mLyrics');
 }
+$('#lyFind').addEventListener('click', async () => {
+  const b = $('#lyFind'); b.disabled = true; $('#lyStat').textContent = '가사를 찾는 중이에요…';
+  const raw = await findLyrics(song());
+  b.disabled = false;
+  if (!raw) { $('#lyStat').textContent = '자동으로 찾지 못했어요. 가사 사이트에서 복사해 붙여넣어 주세요.'; return; }
+  $('#lyRaw').value = raw; lyPreview();
+});
 $('#btnLyrics').addEventListener('click', openLyrics);
 $('#lyRaw').addEventListener('input', lyPreview);
 $('#lyEng').addEventListener('change', lyPreview);
@@ -1373,7 +1418,7 @@ async function poll() {
     const j = await r.json();
     SP.error = '';
     if (!j.item || j.currently_playing_type !== 'track') { SP.playing = false; renderSp(); return; }
-    const tr = { id: j.item.id, name: j.item.name, artists: (j.item.artists || []).map(a => a.name) };
+    const tr = { id: j.item.id, name: j.item.name, artists: (j.item.artists || []).map(a => a.name), dur: j.item.duration_ms || 0 };
     SP.progress = j.progress_ms || 0; SP.playing = !!j.is_playing; SP.at = performance.now();
     const changed = !SP.track || SP.track.id !== tr.id;
     SP.track = tr;
@@ -1381,9 +1426,16 @@ async function poll() {
     renderSp();
   } catch (e) { SP.error = '스포티파이에 연결할 수 없어요.'; renderSp(); }
 }
-function onTrackChange(tr) {
+async function onTrackChange(tr) {
   const m = matchTrack(tr);
   SP.matchId = m.song ? m.song.id : null;
+  if (m.song && !lyrics[m.song.id]) {
+    const got = await autoLyrics(m.song, tr);
+    if (!SP.track || SP.track.id !== tr.id) return;
+    if (got) toast(`${m.song.title} 가사를 자동으로 가져왔어요`);
+    else if (!settings.autoSwitch) toast(`${m.song.title} 가사를 찾지 못했어요. 가사 넣기에서 붙여넣어 주세요.`);
+    if (got && m.song.id === state.songId) { selectSong(m.song.id, { karaoke: true }); return; }
+  }
   if (!settings.autoSwitch) { renderKCtl(); return; }
   if (m.song) {
     const go = () => selectSong(m.song.id, { karaoke: true });
