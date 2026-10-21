@@ -13,6 +13,7 @@ K-POP 곡 컨셉별로 화면 디자인이 바뀌는 한글 타자 연습 웹앱
 - hangul — 자모 분해(`keysOf`), IME 조합 중 판정(`composingOk`). 타수는 자모 기준
 - lyric cleanup — `processLyrics`: LRC 타임스탬프 파싱, [Verse] 태그 제거, 괄호 애드립 제거, 영어 처리(keep/words/lines), 긴 줄 분할
 - session — `newSession`, `onInput`, `advance`, `finish`. 모드: practice / karaoke(LRC 타이밍)
+- 영어 자동 넘기기 — `settings.engPass`(기본 켜짐). `skipMask`/`autoPass`가 영어 구간을 입력칸에 자동으로 채움(타수·콤보 제외)
 - canvases — `AMB`(배경 애니메이션), `FXD`(타건 파티클), 박자(BPM 탭) 펄스는 CSS 변수 `--pulse`
 - Spotify — Authorization Code + PKCE, 클라이언트만. scope `user-read-currently-playing user-read-playback-state`. 3초 폴링, 곡 매칭(`matchTrack`) 후 테마 자동 전환 + 노래방 싱크
 

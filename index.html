@@ -76,6 +76,7 @@ body[data-title=gradient] #mTitle{background:linear-gradient(90deg,var(--accent)
 .line.prev{font-size:14px;color:var(--dim);opacity:.55;min-height:1.4em}
 .line.cur{font-size:clamp(22px,3.5vw,38px);line-height:1.38;color:var(--dim);min-height:1.38em;opacity:.9}
 .cur .ok{color:var(--ok)}
+.cur .skip{color:var(--dim);opacity:.55}
 .cur .err{color:var(--err);text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:7px}
 .cur .err.sp{background:color-mix(in srgb,var(--err) 35%,transparent)}
 .cur .comp{color:var(--accent)}
@@ -342,6 +343,7 @@ body[data-deco~=vignette] #deco::after{content:'';position:absolute;inset:0;back
     <p class="help">Redirect URI (스포티파이 앱 설정에 그대로 붙여넣기)</p>
     <div class="uri"><code id="ruri"></code><button class="btn" id="copyUri" type="button">복사</button></div>
     <div class="opt"><label><input type="checkbox" id="autoSw"> 재생 중인 곡에 맞춰 곡과 테마 자동 전환</label></div>
+    <div class="opt"><label><input type="checkbox" id="engPass"> 영어는 치지 않아도 자동으로 넘기기</label></div>
     <div class="row">
       <button class="btn primary" id="spConnect" type="button">스포티파이 연결</button>
       <button class="btn" id="spDisconnect" type="button">연결 해제</button>
@@ -539,7 +541,7 @@ const SONGS = [
 const SONG_BY = Object.fromEntries(SONGS.map(s => [s.id, s]));
 
 /* ───────── persistence ───────── */
-const settings = Object.assign({ effects: 2, autoSwitch: true, clientId: '', lastSong: 'aespa-nextlevel', eng: 'keep', paren: true }, store.get('tg.settings', {}));
+const settings = Object.assign({ effects: 2, autoSwitch: true, clientId: '', lastSong: 'aespa-nextlevel', eng: 'keep', paren: true, engPass: true }, store.get('tg.settings', {}));
 const saveSettings = () => store.set('tg.settings', settings);
 let lyrics = store.get('tg.lyrics', {});
 let records = store.get('tg.records', {});
@@ -890,7 +892,24 @@ function newSession() {
     kStart: 0, kPaused: 0, kOffset: 0 };
   inp.value = ''; lastLen = 0; composing = false;
   $('#mResult').hidden = true;
-  renderMeta(); renderDock(); render();
+  renderMeta(); renderDock(); render(); autoPass();
+}
+// English runs (letters plus the spaces/punctuation between them) that are filled in automatically when engPass is on
+const ENG_RUN = /[A-Za-z](?:[A-Za-z0-9'&.,!?~\-]|\s+(?=[A-Za-z0-9]))*[.,!?~]*/g;
+function skipMask(T) {
+  const m = new Array(T.length).fill(false);
+  if (!settings.engPass || !T) return m;
+  ENG_RUN.lastIndex = 0; let r;
+  while ((r = ENG_RUN.exec(T))) for (let j = r.index; j < r.index + r[0].length; j++) m[j] = true;
+  return m;
+}
+function autoPass() {
+  if (!S || S.done || composing || S.idx < 0 || S.lineDone) return false;
+  const T = S.lines[S.idx]; if (!T) return false;
+  const m = skipMask(T); let V = inp.value;
+  if (V.length >= T.length || !m[V.length]) return false;
+  while (V.length < T.length && m[V.length]) V += T[V.length];
+  inp.value = V; onInput(null, true); return true;
 }
 function resetLineState() { S.eval = []; S.val = []; S.err = new Set(); S.okc = new Set(); S.lineDone = false; }
 function finalizeLine() {
@@ -903,9 +922,9 @@ function advance() {
   finalizeLine();
   S.idx++; S.lineFinal = false; resetLineState();
   inp.value = ''; lastLen = 0; S.justAdv = performance.now();
-  if (S.idx >= S.lines.length) finish(); else render();
+  if (S.idx >= S.lines.length) finish(); else { render(); autoPass(); }
 }
-function onInput(e) {
+function onInput(e, fromPass) {
   if (!S || S.done) return;
   if (S.kind === 'karaoke' && (S.idx < 0 || S.lineDone)) { inp.value = ''; return; }
   const T = S.lines[S.idx];
@@ -916,9 +935,11 @@ function onInput(e) {
   const cl = Math.min(composing ? V.length - 1 : V.length, T.length);
   for (let j = Math.max(cl, 0); j < S.eval.length; j++) { S.eval[j] = undefined; S.val[j] = undefined; }
   let hadErr = false;
+  const skip = skipMask(T);
   for (let j = 0; j < cl; j++) {
     if (S.eval[j] && S.val[j] === V[j]) continue;
     S.val[j] = V[j];
+    if (skip[j] && V[j] === T[j]) { S.eval[j] = 'ok'; continue; }
     if (V[j] === T[j]) {
       S.eval[j] = 'ok';
       if (!S.okc.has(j)) { S.okc.add(j); S.strokes += keysOf(T[j]).length; }
@@ -927,9 +948,12 @@ function onInput(e) {
     } else { S.eval[j] = 'err'; S.err.add(j); S.combo = 0; hadErr = true; }
   }
   const typed = !e || !e.inputType || !e.inputType.startsWith('delete');
-  if (typed && V.length) emitKey();
+  if (typed && V.length && !fromPass) emitKey();
   if (hadErr) shake();
   lastLen = V.length;
+  if (!fromPass && !composing && V.length < T.length && skip[V.length]) { autoPass(); return; }
+  // a finished Hangul syllable right before English: commit the IME so the English can be filled in
+  if (composing && V.length < T.length && skip[V.length] && V[V.length - 1] === T[V.length - 1]) setTimeout(() => { inp.blur(); inp.focus(); }, 0);
   if (!composing && V.length >= T.length) {
     if (S.kind === 'karaoke') { finalizeLine(); S.lineDone = true; inp.value = ''; }
     else { advance(); return; }
@@ -1009,10 +1033,12 @@ function renderCur() {
   const V = inp.value;
   const cl = Math.min(composing ? V.length - 1 : V.length, T.length);
   const at = composing ? V.length - 1 : V.length;
+  const skip = skipMask(T);
   let h = '';
   for (let j = 0; j < T.length; j++) {
     const ch = T[j]; let cls = 'c';
     if (ch === ' ') cls += ' sp';
+    if (skip[j]) cls += ' skip';
     if (j < cl) cls += S.eval[j] === 'ok' ? ' ok' : ' err';
     else if (composing && j === V.length - 1) cls += composingOk(V[j], j, T) ? ' comp' : ' err';
     else if (j === at) cls += ' at';
@@ -1094,7 +1120,7 @@ function tickKaraoke() {
   if (a > S.idx) {
     if (S.idx >= 0) finalizeLine();
     S.idx = a; S.lineFinal = false; resetLineState(); inp.value = ''; lastLen = 0;
-    render();
+    render(); autoPass();
   } else if (a < S.idx && spLinked()) {
     // the listener scrubbed backwards in Spotify: jump back without scoring
     S.idx = a; S.lineFinal = false; resetLineState(); inp.value = ''; render();
@@ -1266,6 +1292,7 @@ function openSettings(focusSpotify) {
   $('#cid').value = settings.clientId;
   $('#ruri').textContent = redirectUri();
   $('#autoSw').checked = settings.autoSwitch;
+  $('#engPass').checked = settings.engPass;
   $('#bkText').value = '';
   $('#bkFile').hidden = spAllowed() === 'framed';
   renderSpStatus();
@@ -1277,6 +1304,7 @@ $('#stClose').addEventListener('click', () => closeModal('#mSettings'));
 $('#segFx').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; settings.effects = +b.dataset.v; saveSettings(); $$('#segFx button').forEach(x => x.classList.toggle('on', x === b)); });
 $('#cid').addEventListener('change', () => { settings.clientId = $('#cid').value.trim(); saveSettings(); });
 $('#autoSw').addEventListener('change', () => { settings.autoSwitch = $('#autoSw').checked; saveSettings(); });
+$('#engPass').addEventListener('change', () => { settings.engPass = $('#engPass').checked; saveSettings(); if (S && !S.done) { autoPass(); renderCur(); renderStats(); } });
 $('#copyUri').addEventListener('click', () => copyText(redirectUri(), $('#ruri')));
 
 async function copyText(text, fallbackEl) {
@@ -1344,6 +1372,9 @@ document.addEventListener('keydown', e => {
 /* ───────── Spotify (Authorization Code with PKCE) ───────── */
 const SP = { tokens: store.get('tg.sp', null), track: null, progress: 0, playing: false, at: 0, matchId: null, error: '', backoff: 0 };
 const SCOPES = 'user-read-currently-playing user-read-playback-state';
+// Client ID is public under PKCE, so a built-in default keeps the connection working even if browser storage is cleared
+const DEFAULT_CLIENT_ID = '';
+if (!settings.clientId && DEFAULT_CLIENT_ID) settings.clientId = DEFAULT_CLIENT_ID;
 function redirectUri() { return location.origin + location.pathname; }
 function spAllowed() {
   let framed = false; try { framed = window.top !== window; } catch (e) { framed = true; }
@@ -1354,7 +1385,7 @@ function spAllowed() {
 function b64url(buf) { return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
 function randStr(n) { const cs = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'; return Array.from(crypto.getRandomValues(new Uint8Array(n)), x => cs[x % cs.length]).join(''); }
 async function spConnect() {
-  settings.clientId = $('#cid').value.trim(); saveSettings();
+  settings.clientId = $('#cid').value.trim() || DEFAULT_CLIENT_ID; saveSettings();
   const ok = spAllowed();
   if (ok === 'framed') { toast('이 미리보기 화면에서는 스포티파이에 연결할 수 없어요. GitHub Pages 주소로 열어주세요.'); return; }
   if (ok === 'insecure') { toast('스포티파이는 https 주소나 http://127.0.0.1 에서만 연결돼요.'); return; }
