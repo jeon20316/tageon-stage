@@ -1373,7 +1373,7 @@ document.addEventListener('keydown', e => {
 const SP = { tokens: store.get('tg.sp', null), track: null, progress: 0, playing: false, at: 0, matchId: null, error: '', backoff: 0 };
 const SCOPES = 'user-read-currently-playing user-read-playback-state';
 // Client ID is public under PKCE, so a built-in default keeps the connection working even if browser storage is cleared
-const DEFAULT_CLIENT_ID = '';
+const DEFAULT_CLIENT_ID = '9c457c5a07f840cd9b9976675c060a8f';
 if (!settings.clientId && DEFAULT_CLIENT_ID) settings.clientId = DEFAULT_CLIENT_ID;
 function redirectUri() { return location.origin + location.pathname; }
 function spAllowed() {
